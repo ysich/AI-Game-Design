@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI 策划案管线工作台</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0d1117; --panel:#151c27; --line:#293548; --text:#e8eef7; --muted:#92a1b8; --accent:#6ee7c8; --warn:#f6c85f; --bad:#ff827b; }
+    * { box-sizing: border-box; } body { margin:0; font-family: ui-sans-serif, system-ui, "Microsoft YaHei", sans-serif; background: radial-gradient(circle at 10% 0%, #1c3040, var(--bg) 38%); color:var(--text); }
+    .shell { max-width:1180px; margin:0 auto; padding:32px 22px 64px; } header { display:flex; justify-content:space-between; align-items:start; gap:16px; margin-bottom:26px; } h1 { margin:0 0 8px; font-size:clamp(26px,4vw,40px); letter-spacing:-.04em; } h2 { font-size:18px; margin:0 0 14px; } p { color:var(--muted); line-height:1.6; margin:0; } .badge { border:1px solid #2d7869; color:var(--accent); padding:6px 10px; border-radius:999px; font-size:12px; white-space:nowrap; }
+    .grid { display:grid; grid-template-columns:minmax(310px, .8fr) minmax(0, 1.2fr); gap:18px; align-items:start; } .panel { background:rgba(21,28,39,.86); border:1px solid var(--line); border-radius:16px; padding:20px; box-shadow:0 18px 50px #0003; } textarea { width:100%; min-height:150px; resize:vertical; background:#0a1018; border:1px solid #324057; border-radius:10px; color:var(--text); padding:14px; line-height:1.6; font:inherit; } input { flex:1; min-width:0; background:#0a1018; border:1px solid #324057; border-radius:9px; color:var(--text); padding:10px 12px; font:inherit; } a { color:var(--accent); } button { cursor:pointer; border:0; border-radius:9px; padding:10px 14px; font:inherit; font-weight:650; } .primary { background:var(--accent); color:#09251f; } .ghost { background:#202c3d; color:var(--text); } .actions { display:flex; gap:9px; margin-top:12px; flex-wrap:wrap; } .hint { font-size:12px; margin-top:10px; }
+    .stages { display:grid; grid-template-columns:repeat(6,1fr); gap:6px; margin-top:18px; } .stage { border:1px solid var(--line); border-radius:8px; padding:8px 4px; text-align:center; color:var(--muted); font-size:11px; } .stage.active { border-color:var(--accent); color:var(--accent); background:#1b3b39; } .stage.failed { border-color:var(--bad); color:var(--bad); }
+    .empty { min-height:410px; display:grid; place-items:center; text-align:center; color:var(--muted); } .summary { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; } .chip { background:#202c3d; color:#c7d3e5; border-radius:999px; font-size:12px; padding:6px 9px; } .section { border-top:1px solid var(--line); padding-top:16px; margin-top:18px; } .chapter { border:1px solid #2a374b; border-radius:10px; padding:12px; margin:8px 0; background:#111923; } .chapter strong { display:block; margin-bottom:6px; } .chapter pre { white-space:pre-wrap; font:inherit; color:#bdc9d9; margin:0; line-height:1.55; } .finding { padding:10px 12px; border-left:3px solid var(--warn); background:#2a2516; margin:8px 0; } .finding.error { border-left-color:var(--bad); background:#2d1d22; } .finding.info { border-left-color:#78a7ff; background:#17243a; } .finding small { color:var(--muted); } .task { border:1px solid #2a374b; border-radius:10px; padding:10px 12px; margin:8px 0; } .task b { color:var(--accent); } .markdown { max-height:350px; overflow:auto; background:#0a1018; border-radius:8px; padding:12px; white-space:pre-wrap; font-size:12px; line-height:1.5; }
+    @media (max-width:820px) { .grid { grid-template-columns:1fr; } .stages { grid-template-columns:repeat(3,1fr); } header { display:block; } .badge { display:inline-block; margin-top:12px; } }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header><div><h1>AI 策划案管线工作台</h1><p>把一句话需求推进到可评审的结构化策划案、检查清单与界面任务。</p></div><span class="badge">LOCAL-FIRST MVP</span></header>
+    <div class="grid">
+      <section class="panel">
+        <h2>输入需求</h2>
+        <textarea id="request" placeholder="例如：做一个为期 7 天的回流玩家签到活动，提升回流率并给出界面和奖励方案。"></textarea>
+        <div class="actions"><button class="primary" id="run">运行完整管线</button><button class="ghost" id="example">填入示例</button></div>
+        <p class="hint">当前使用确定性本地适配器，不需要 API Key。策划案正文会保存到本地 Markdown 文档库。</p>
+        <div class="stages" id="stages"></div>
+        <div class="section"><h2>管线说明</h2><p>Intake 识别任务 → Context 装配模板与案例 → Draft 生成章节 → Review 检查固定漏项 → Visual 拆分页面 → Export 写入本地 Markdown 文档库并保存 JSON 快照。</p></div>
+        <div class="section"><h2>本地 Markdown 文档库</h2><div class="actions"><input id="doc-query" placeholder="搜索标题或正文" /><button class="ghost" id="refresh-docs">刷新</button></div><div id="documents"><p>正在读取文档库…</p></div></div>
+      </section>
+      <section class="panel" id="result"><div class="empty"><div><h2>还没有运行记录</h2><p>输入一个具体活动需求，开始生成第一版策划案。</p></div></div></section>
+    </div>
+  </main>
+  <script>
+    const stages = ['intake','context_ready','drafted','reviewed','visualized','exported'];
+    const labels = {intake:'理解',context_ready:'装配',drafted:'生文',reviewed:'检查',visualized:'视觉',exported:'导出'};
+    const $ = (q) => document.querySelector(q);
+    function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function renderStages(stage) { $('#stages').innerHTML = stages.map(s => `<div class="stage ${stage===s?'active':''} ${stage==='failed'?'failed':''}">${labels[s]}</div>`).join(''); }
+    function render(run) {
+      renderStages(run.stage);
+      const route = run.route || {};
+      const findings = run.findings || [];
+      const document = run.document;
+      let html = `<div class="summary"><span class="chip">${esc(run.stage)}</span><span class="chip">${esc(route.route || '—')}</span><span class="chip">置信度 ${Math.round((route.confidence || 0)*100)}%</span><span class="chip">上下文 ${run.context?.length || 0} 条</span></div>`;
+      if (route.clarification_required) html += `<div class="finding">需要补充：${(route.clarification_questions || []).map(esc).join('<br>')}</div>`;
+      if (run.errors?.length) html += `<div class="finding error">${run.errors.map(esc).join('<br>')}</div>`;
+      if (document) {
+        html += `<h2>${esc(document.title)}</h2><p>${esc(document.activity_type)} · v${document.version}</p>`;
+        html += `<div class="section"><h2>章节草案</h2>${document.chapters.map(c => `<div class="chapter"><strong>${esc(c.title)}</strong><pre>${esc(c.content)}</pre></div>`).join('')}</div>`;
+      }
+      html += `<div class="section"><h2>检查结果 (${findings.length})</h2>${findings.length ? findings.map(f => `<div class="finding ${esc(f.severity)}"><b>${esc(f.rule_id)}</b>：${esc(f.message)}<br><small>${esc(f.suggestion || '')}</small></div>`).join('') : '<p>未发现问题</p>'}</div>`;
+      html += `<div class="section"><h2>界面任务 (${run.visual_tasks?.length || 0})</h2>${(run.visual_tasks || []).map(t => `<div class="task"><b>${esc(t.screen_name)}</b> · ${esc(t.state)}<br>${esc(t.purpose)}<br><small>组件：${t.components.map(esc).join('、')}</small></div>`).join('')}</div>`;
+      if (run.exports?.markdown) html += `<div class="section"><h2>已写入本地 Markdown 文档库</h2><p>${esc(run.exports.document_path || '')}</p><pre class="markdown">${esc(run.exports.markdown)}</pre></div>`;
+      $('#result').innerHTML = html;
+    }
+    function renderDocuments(items) {
+      $('#documents').innerHTML = items.length ? items.map(d => `<div class="task"><b><a href="#" data-doc-id="${esc(d.id)}">${esc(d.title)}</a></b><br><small>v${esc(d.version)} · ${esc(d.path)}</small></div>`).join('') : '<p>文档库暂无匹配文档。</p>';
+      document.querySelectorAll('[data-doc-id]').forEach(link => link.onclick = async (event) => { event.preventDefault(); const data = await (await fetch('/api/documents/' + encodeURIComponent(link.dataset.docId))).json(); $('#result').innerHTML = `<div class="summary"><span class="chip">本地 Markdown 文档</span><span class="chip">v${esc(data.requested_version)}</span></div><h2>${esc(data.title)}</h2><p>${esc(data.path)}</p><pre class="markdown">${esc(data.content)}</pre>`; });
+    }
+    async function loadDocuments() { const q = encodeURIComponent($('#doc-query')?.value?.trim() || ''); const items = await (await fetch('/api/documents' + (q ? '?q=' + q : ''))).json(); renderDocuments(items); }
+    $('#example').onclick = () => $('#request').value = '做一个为期 7 天的回流玩家签到活动，提升回流率并给出界面和奖励方案。';
+    $('#refresh-docs').onclick = loadDocuments;
+    $('#doc-query').onkeydown = (event) => { if (event.key === 'Enter') loadDocuments(); };
+    $('#run').onclick = async () => { const request = $('#request').value.trim(); if (!request) return; $('#run').disabled = true; $('#run').textContent = '运行中…'; try { const r = await fetch('/api/runs', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({request})}); render(await r.json()); await loadDocuments(); } catch (e) { $('#result').innerHTML = `<div class="finding error">${esc(e.message)}</div>`; } finally { $('#run').disabled = false; $('#run').textContent = '运行完整管线'; } };
+    renderStages('');
+    loadDocuments();
+  </script>
+</body>
+</html>

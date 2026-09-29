@@ -112,6 +112,9 @@ class PlannerRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/health":
                 self._send(200, {"ok": True, "service": "ai-planner-pipeline"})
                 return
+            if path == "/api/config":
+                self._send(200, self.pipeline.get_model_config())
+                return
             if path == "/api/runs":
                 self._send(200, [to_dict(run) for run in self.pipeline.store.list()])
                 return
@@ -155,6 +158,9 @@ class PlannerRequestHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         try:
             body = self._json_body()
+            if path == "/api/config":
+                self._send(200, self.pipeline.update_model_config(body))
+                return
             if path == "/api/runs":
                 request = str(body.get("request", ""))
                 answers = body.get("answers") or []

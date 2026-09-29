@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 import re
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Protocol, Sequence
@@ -13,6 +16,7 @@ from .models import (
     PlannerMode,
     Route,
     VisualTask,
+    to_dict,
 )
 
 
@@ -168,6 +172,138 @@ class LocalLLMProvider:
             chapters=chapters,
             metadata={"request": request, "context_refs": [item.id for item in context]},
         )
+
+
+class OpenAICompatibleLLMProvider:
+    """LLM adapter for OpenAI Chat Completions compatible endpoints."""
+
+    def __init__(self, config: Dict[str, object]):
+        self.config = config
+        self.base_url = str(config["base_url"]).rstrip("/")
+        self.model = str(config["model"])
+        self.api_key = str(config.get("api_key", ""))
+        self.timeout = int(config.get("timeout_seconds", 60))
+
+    def _chat(self, system: str, user: str) -> str:
+        url = self.base_url if self.base_url.endswith("/chat/completions") else self.base_url + "/chat/completions"
+        payload = {
+            "model": self.model,
+            "temperature": self.config.get("temperature", 0.4),
+            "max_tokens": self.config.get("max_tokens", 4000),
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        }
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        request = urllib.request.Request(
+            url,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                result = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:500]
+            raise RuntimeError(f"模型接口返回 HTTP {exc.code}: {detail}") from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"模型接口连接失败：{exc.reason}") from exc
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"模型接口请求失败：{exc}") from exc
+        try:
+            return str(result["choices"][0]["message"]["content"])
+        except (KeyError, IndexError, TypeError) as exc:
+            raise RuntimeError("模型接口响应缺少 choices[0].message.content") from exc
+
+    @staticmethod
+    def _json_content(content: str) -> Dict[str, object]:
+        text = content.strip()
+        if text.startswith("```"):
+            text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.IGNORECASE | re.DOTALL).strip()
+        try:
+            value = json.loads(text)
+        except json.JSONDecodeError:
+            start, end = text.find("{"), text.rfind("}")
+            if start < 0 or end <= start:
+                raise ValueError("模型没有返回可解析的 JSON")
+            value = json.loads(text[start : end + 1])
+        if not isinstance(value, dict):
+            raise ValueError("模型返回的 JSON 必须是对象")
+        return value
+
+    def route(self, request: str, has_document: bool = False) -> IntentRoute:
+        content = self._chat(
+            "你是游戏活动策划需求路由器。只返回 JSON，不要 Markdown。字段必须包含 route、planner_mode、confidence、clarification_required、clarification_questions、reason。route 只能是 clarify、new_plan、partial_revision、full_rewrite、image_only、answer；planner_mode 只能是 new、partial_revision、full_rewrite、image_only。",
+            json.dumps({"request": request, "has_document": has_document}, ensure_ascii=False),
+        )
+        data = self._json_content(content)
+        route_value = str(data.get("route", Route.NEW_PLAN.value))
+        try:
+            route = Route(route_value)
+        except ValueError:
+            route = Route.NEW_PLAN
+        mode_value = str(data.get("planner_mode", "new"))
+        try:
+            mode = PlannerMode(mode_value)
+        except ValueError:
+            mode = PlannerMode.IMAGE_ONLY if route == Route.IMAGE_ONLY else PlannerMode.NEW
+        return IntentRoute(
+            route=route,
+            planner_mode=mode,
+            confidence=float(data.get("confidence", 0.7)),
+            clarification_required=bool(data.get("clarification_required", route == Route.CLARIFY)),
+            clarification_questions=[str(item) for item in data.get("clarification_questions", []) if str(item).strip()],
+            reason=str(data.get("reason", "由配置的模型完成需求路由")),
+        )
+
+    def draft(
+        self,
+        request: str,
+        context: Sequence[ContextSegment],
+        mode: PlannerMode,
+        existing: PlanningDocument | None = None,
+    ) -> PlanningDocument:
+        context_payload = [to_dict(item) for item in context]
+        user_payload = {"request": request, "mode": mode.value, "context": context_payload}
+        if existing:
+            user_payload["existing"] = to_dict(existing)
+        content = self._chat(
+            "你是游戏活动策划案生成器。只返回 JSON，不要 Markdown。返回 title、activity_type、chapters；chapters 是对象数组，每项包含 id、title、content、status、source_refs。生成内容必须可执行、可评审，引用上下文时保留来源 id。",
+            json.dumps(user_payload, ensure_ascii=False),
+        )
+        data = self._json_content(content)
+        data = data.get("document", data)
+        raw_chapters = data.get("chapters", []) if isinstance(data, dict) else []
+        chapters = [
+            Chapter(
+                id=str(item.get("id", f"chapter-{index}")),
+                title=str(item.get("title", f"第 {index} 章")),
+                content=str(item.get("content", "")).strip(),
+                source_refs=[str(ref) for ref in item.get("source_refs", [])],
+                status=str(item.get("status", "draft")),
+            )
+            for index, item in enumerate(raw_chapters, start=1)
+            if isinstance(item, dict) and str(item.get("content", "")).strip()
+        ]
+        if not chapters:
+            raise ValueError("模型没有返回有效的策划案章节")
+        title = str(data.get("title", "")).strip() or _title_from_request(request)
+        document_id = existing.id if existing else "doc-" + re.sub(r"[^a-z0-9]", "", title.lower())[:24]
+        return PlanningDocument(
+            id=document_id,
+            title=title,
+            activity_type=str(data.get("activity_type", "常规活动")),
+            chapters=chapters,
+            version=(existing.version + 1 if existing else 1),
+            metadata={"request": request, "context_refs": [item.id for item in context], "provider": "openai_compatible", "model": self.model},
+        )
+
+
+def create_llm_provider(config: Dict[str, object]) -> LLMProvider:
+    if config.get("provider") == "openai_compatible":
+        return OpenAICompatibleLLMProvider(config)
+    return LocalLLMProvider()
 
 
 class MarkdownExporter:

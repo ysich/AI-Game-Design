@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>模型设置 · AI 策划案助手</title>
+  <link rel="stylesheet" href="/web/portal.css" />
+  <style>
+    .settings-form{max-width:760px}.secret-hint{color:var(--quiet);font-size:10px;line-height:1.5}.actions{display:flex;align-items:center;gap:10px;margin-top:18px}.secondary{padding:10px 14px;border:1px solid var(--line);border-radius:10px;color:var(--muted);background:#fff;font-size:12px;cursor:pointer}.secondary:hover{border-color:#bfd4ff;color:var(--accent);background:var(--accent-soft)}.checkbox{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11px}.checkbox input{accent-color:var(--accent)}.provider-note{margin-top:16px;padding:13px;border:1px solid var(--line);border-radius:11px;color:var(--muted);background:#f8faff;font-size:11px;line-height:1.65}.provider-note strong{color:var(--ink)}
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">AI</span><span>模型设置</span></div>
+    <nav class="top-actions"><a href="/web/index.html">返回工作台</a></nav>
+  </header>
+  <main class="page">
+    <div class="title-row">
+      <div>
+        <div class="eyebrow">Model Provider</div>
+        <h1>配置生成模型</h1>
+        <p class="subtitle">设置会保存到当前项目本地，并在下一次生成时使用。保存后无需重启服务。</p>
+      </div>
+      <span class="badge" id="current-badge">读取中…</span>
+    </div>
+    <section class="panel settings-form">
+      <div class="form-grid">
+        <div class="field">
+          <label for="provider">模型提供商</label>
+          <select id="provider">
+            <option value="local">本地规则模型</option>
+            <option value="openai_compatible">OpenAI 兼容接口</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="model">模型名称</label>
+          <input id="model" placeholder="例如：gpt-4o-mini" autocomplete="off" />
+        </div>
+        <div class="field full">
+          <label for="base-url">接口地址</label>
+          <input id="base-url" placeholder="https://api.openai.com/v1" autocomplete="url" />
+        </div>
+        <div class="field full">
+          <label for="api-key">API Key</label>
+          <input id="api-key" type="password" placeholder="留空表示保留当前 Key" autocomplete="new-password" />
+          <span class="secret-hint" id="key-hint">当前未配置 API Key。</span>
+          <label class="checkbox"><input type="checkbox" id="clear-key" /> 清除已保存的 API Key</label>
+        </div>
+        <div class="field">
+          <label for="temperature">Temperature</label>
+          <input id="temperature" type="number" min="0" max="2" step="0.1" />
+        </div>
+        <div class="field">
+          <label for="max-tokens">最大输出 Token</label>
+          <input id="max-tokens" type="number" min="256" max="32000" step="256" />
+        </div>
+        <div class="field">
+          <label for="timeout">请求超时（秒）</label>
+          <input id="timeout" type="number" min="5" max="300" step="5" />
+        </div>
+      </div>
+      <div class="provider-note"><strong>本地规则模型：</strong>无需网络和 API Key，适合离线演示。<br /><strong>OpenAI 兼容接口：</strong>服务端会向接口的 <code>/chat/completions</code> 发送结构化生成请求，适用于 OpenAI、兼容网关和自部署模型服务。</div>
+      <div class="actions"><button class="primary" id="save">保存并应用</button><button class="secondary" id="reset">恢复本地默认</button><span class="status" id="status"></span></div>
+    </section>
+  </main>
+  <script>
+    const $ = (selector) => document.querySelector(selector);
+    const fields = {provider: $('#provider'), model: $('#model'), base_url: $('#base-url'), api_key: $('#api-key'), temperature: $('#temperature'), max_tokens: $('#max-tokens'), timeout_seconds: $('#timeout')};
+    let current = null;
+    function setForm(config){current=config;fields.provider.value=config.provider;fields.model.value=config.model;fields.base_url.value=config.base_url;fields.api_key.value='';fields.temperature.value=config.temperature;fields.max_tokens.value=config.max_tokens;fields.timeout_seconds.value=config.timeout_seconds;$('#key-hint').textContent=config.api_key_configured?'当前已配置 API Key，留空保存时会继续使用。':'当前未配置 API Key。';$('#current-badge').textContent=config.provider==='local'?'当前：本地规则模型':'当前：OpenAI 兼容接口';}
+    async function load(){const response=await fetch('/api/config');const config=await response.json();if(!response.ok)throw new Error(config.error||'模型配置读取失败');setForm(config);}
+    $('#save').onclick=async()=>{const button=$('#save');button.disabled=true;$('#status').textContent='保存中…';const payload={provider:fields.provider.value,model:fields.model.value,base_url:fields.base_url.value,api_key:fields.api_key.value,temperature:fields.temperature.value,max_tokens:fields.max_tokens.value,timeout_seconds:fields.timeout_seconds.value,clear_api_key:$('#clear-key').checked};try{const response=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const data=await response.json();if(!response.ok)throw new Error(data.error||'模型配置保存失败');setForm(data);$('#clear-key').checked=false;$('#status').textContent='已保存并应用';}catch(error){$('#status').textContent=error.message;}finally{button.disabled=false;}};
+    $('#reset').onclick=()=>{setForm({provider:'local',model:'local-rule-v1',base_url:'https://api.openai.com/v1',temperature:0.4,max_tokens:4000,timeout_seconds:60,api_key_configured:false});$('#api-key').value='';$('#clear-key').checked=true;$('#status').textContent='点击“保存并应用”后恢复本地默认';};
+    load().catch(error=>$('#status').textContent=error.message);
+  </script>
+</body>
+</html>

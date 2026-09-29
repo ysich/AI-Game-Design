@@ -8,12 +8,14 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from .adapters import (
     DocumentExporter,
+    LLMProvider,
     KnowledgeStore,
     LocalImageProvider,
     LocalKnowledgeStore,
-    LocalLLMProvider,
     MarkdownExporter,
+    create_llm_provider,
 )
+from .config import ModelConfigStore, public_model_config
 from .models import (
     CheckFinding,
     ContextSegment,
@@ -39,17 +41,27 @@ class PlannerPipeline:
     def __init__(
         self,
         root: Path | str = ".",
-        llm: LocalLLMProvider | None = None,
+        llm: LLMProvider | None = None,
         knowledge: KnowledgeStore | None = None,
         exporter: DocumentExporter | None = None,
         image_provider: LocalImageProvider | None = None,
     ):
         self.root = Path(root)
         self.store = JsonRunStore(self.root)
-        self.llm = llm or LocalLLMProvider()
+        self.model_config_store = ModelConfigStore(self.root)
+        self.model_config = self.model_config_store.load()
+        self.llm = llm or create_llm_provider(self.model_config)
         self.knowledge = knowledge or LocalKnowledgeStore(root=self.root / "Doc" / "AI策划案管线" / "知识库")
         self.exporter = exporter or MarkdownExporter()
         self.image_provider = image_provider or LocalImageProvider()
+
+    def get_model_config(self) -> Dict[str, Any]:
+        return public_model_config(self.model_config)
+
+    def update_model_config(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        self.model_config = self.model_config_store.save(payload)
+        self.llm = create_llm_provider(self.model_config)
+        return self.get_model_config()
 
     def create_run(self, request: str, existing_document: Dict[str, Any] | None = None) -> WorkflowRun:
         run_id = f"run-{uuid.uuid4().hex[:10]}"

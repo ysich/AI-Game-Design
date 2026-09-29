@@ -21,7 +21,7 @@ python -m ai_planner.cli serve
 
 - `GET /api/health`：健康检查。
 - `GET/POST /api/config`：读取或保存模型配置；读取结果只返回 API Key 是否已配置。
-- `POST /api/images/generate`：根据运行记录和界面任务调用已配置的图片模型；可选传入 `size`（`1024x1024`、`1536x1024`、`1024x1536` 或 `auto`）覆盖本次生成的屏幕比例与分辨率。
+- `POST /api/images/generate`：根据运行记录和界面任务调用已配置的图片模型，统一使用图片模型设置中的屏幕比例与分辨率。
 - `GET /api/images/{filename}`：读取已保存的本地生成图片。
 - `GET /api/runs`：列出运行快照。
 - `GET /api/runs/{id}`：读取完整运行结果。

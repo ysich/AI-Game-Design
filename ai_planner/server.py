@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 import mimetypes
 import sys
-import uuid
-from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -141,9 +139,6 @@ class PlannerRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/analytics":
                 self._send(200, self._analytics())
                 return
-            if path == "/api/feedback":
-                self._send(200, self.pipeline.store.list_feedback())
-                return
             if path == "/api/documents":
                 keyword = query.get("q", [""])[0]
                 documents = self.pipeline.store.document_library.search(keyword) if keyword else self.pipeline.store.document_library.list()
@@ -205,13 +200,6 @@ class PlannerRequestHandler(BaseHTTPRequestHandler):
                     run = self.pipeline.run(request)
                     results.append({"index": index, "request": request, "run_id": run.id, "stage": run.stage.value, "status": "passed" if run.stage.value == "exported" else "needs_review", "findings": len(run.findings), "message": "已完成本地管线" if run.stage.value == "exported" else "需要补充需求"})
                 self._send(200, {"results": results})
-                return
-            if path == "/api/feedback":
-                message = str(body.get("message", "")).strip()
-                if not message:
-                    raise ValueError("反馈内容不能为空")
-                feedback = {"id": f"feedback-{uuid.uuid4().hex[:10]}", "run_id": str(body.get("run_id", "")).strip(), "type": str(body.get("type", "general")).strip() or "general", "message": message, "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
-                self._send(201, self.pipeline.store.save_feedback(feedback))
                 return
             if path.startswith("/api/runs/") and path.endswith("/revise"):
                 run_id = path.split("/")[3]

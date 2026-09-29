@@ -125,24 +125,9 @@ class JsonRunStore:
         self.root = Path(root)
         self.runs_dir = self.root / ".ai-planner" / "runs"
         self.exports_dir = self.root / ".ai-planner" / "exports"
-        self.feedback_path = self.root / ".ai-planner" / "feedback.json"
         self.document_library = MarkdownDocumentLibrary(self.root / "Doc" / "AI策划案管线" / "文档库")
         self.runs_dir.mkdir(parents=True, exist_ok=True)
         self.exports_dir.mkdir(parents=True, exist_ok=True)
-
-    def list_feedback(self) -> List[Dict[str, Any]]:
-        if not self.feedback_path.exists():
-            return []
-        payload = json.loads(self.feedback_path.read_text(encoding="utf-8"))
-        return payload if isinstance(payload, list) else []
-
-    def save_feedback(self, feedback: Dict[str, Any]) -> Dict[str, Any]:
-        records = self.list_feedback()
-        records.insert(0, feedback)
-        temp = self.feedback_path.with_suffix(".tmp")
-        temp.write_text(json.dumps(records[:200], ensure_ascii=False, indent=2), encoding="utf-8")
-        temp.replace(self.feedback_path)
-        return feedback
 
     def path_for(self, run_id: str) -> Path:
         safe_id = re.sub(r"[^a-zA-Z0-9_-]", "", run_id)

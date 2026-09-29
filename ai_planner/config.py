@@ -26,6 +26,17 @@ DEFAULT_IMAGE_CONFIG: Dict[str, Any] = {
     "timeout_seconds": 120,
 }
 
+DEFAULT_SEARCH_CONFIG: Dict[str, Any] = {
+    "provider": "bing",
+    "base_url": "https://www.bing.com/search",
+    "api_key": "",
+    "timeout_seconds": 15,
+    "max_results": 5,
+    "region": "wt-wt",
+    "safe_search": True,
+    "auto_context": False,
+}
+
 # These are the image sizes supported by the OpenAI-compatible image contract.
 # Keep the list shared by config validation and per-generation overrides.
 SUPPORTED_IMAGE_SIZES = frozenset({
@@ -50,6 +61,16 @@ def _number(value: Any, field: str, minimum: float, maximum: float, integer: boo
     if number < minimum or number > maximum:
         raise ValueError(f"{field} 必须在 {minimum:g} 到 {maximum:g} 之间")
     return number
+
+
+def _boolean(value: Any, default: bool = False) -> bool:
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off", ""}:
+            return False
+    return bool(value) if value is not None else default
 
 
 def _endpoint(value: Any, provider: str, field: str) -> str:
@@ -109,12 +130,41 @@ def _image_config(payload: Dict[str, Any], current: Dict[str, Any]) -> Dict[str,
     }
 
 
+def _search_config(payload: Dict[str, Any], current: Dict[str, Any]) -> Dict[str, Any]:
+    source = dict(DEFAULT_SEARCH_CONFIG)
+    source.update(current)
+    source.update(payload)
+    provider = str(source.get("provider", "bing")).strip() or "bing"
+    if provider not in {"disabled", "bing", "duckduckgo", "tavily", "serper"}:
+        raise ValueError("联网搜索提供商只能是 disabled、bing、duckduckgo、tavily 或 serper")
+    base_url = _endpoint(source.get("base_url", DEFAULT_SEARCH_CONFIG["base_url"]), provider, "联网搜索接口地址")
+    if provider == "tavily" and "base_url" not in payload and current.get("base_url", DEFAULT_SEARCH_CONFIG["base_url"]) == DEFAULT_SEARCH_CONFIG["base_url"]:
+        base_url = "https://api.tavily.com/search"
+    if provider == "serper" and "base_url" not in payload and current.get("base_url", DEFAULT_SEARCH_CONFIG["base_url"]) == DEFAULT_SEARCH_CONFIG["base_url"]:
+        base_url = "https://google.serper.dev/search"
+    region = str(source.get("region", "wt-wt")).strip()[:20] or "wt-wt"
+    return {
+        "provider": provider,
+        "base_url": base_url,
+        "api_key": str(source.get("api_key", "") or ""),
+        "timeout_seconds": _number(source.get("timeout_seconds", 15), "联网搜索超时", 3, 120, integer=True),
+        "max_results": _number(source.get("max_results", 5), "联网搜索结果数", 1, 10, integer=True),
+        "region": region,
+        "safe_search": _boolean(source.get("safe_search", True), True),
+        "auto_context": _boolean(source.get("auto_context", False)),
+    }
+
+
 def _as_nested(config: Dict[str, Any] | None) -> Dict[str, Dict[str, Any]]:
     value = config or {}
-    if "text" in value or "image" in value:
-        return {"text": dict(value.get("text") or {}), "image": dict(value.get("image") or {})}
+    if "text" in value or "image" in value or "search" in value:
+        return {
+            "text": dict(value.get("text") or {}),
+            "image": dict(value.get("image") or {}),
+            "search": dict(value.get("search") or {}),
+        }
     # Migrate the first version, where text settings lived at the top level.
-    return {"text": dict(value), "image": {}}
+    return {"text": dict(value), "image": {}, "search": {}}
 
 
 def normalize_model_config(payload: Dict[str, Any] | None, current: Dict[str, Any] | None = None) -> Dict[str, Dict[str, Any]]:
@@ -123,12 +173,13 @@ def normalize_model_config(payload: Dict[str, Any] | None, current: Dict[str, An
     return {
         "text": _text_config(incoming["text"], saved["text"]),
         "image": _image_config(incoming["image"], saved["image"]),
+        "search": _search_config(incoming["search"], saved["search"]),
     }
 
 
 def public_model_config(config: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     result: Dict[str, Dict[str, Any]] = {}
-    for kind in ("text", "image"):
+    for kind in ("text", "image", "search"):
         section = config[kind]
         result[kind] = {key: value for key, value in section.items() if key != "api_key"}
         result[kind]["api_key_configured"] = bool(section.get("api_key"))

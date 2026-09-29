@@ -16,6 +16,8 @@ from .adapters import (
     MarkdownExporter,
     create_image_generation_provider,
     create_llm_provider,
+    create_web_search_provider,
+    WebSearchProvider,
 )
 from .config import ModelConfigStore, SUPPORTED_IMAGE_SIZES, public_model_config
 from .models import (
@@ -47,6 +49,7 @@ class PlannerPipeline:
         knowledge: KnowledgeStore | None = None,
         exporter: DocumentExporter | None = None,
         image_provider: LocalImageProvider | None = None,
+        web_search: WebSearchProvider | None = None,
     ):
         self.root = Path(root)
         self.store = JsonRunStore(self.root)
@@ -54,6 +57,7 @@ class PlannerPipeline:
         self.model_config = self.model_config_store.load()
         self.llm = llm or create_llm_provider(self.model_config["text"])
         self.image_generator: ImageGenerationProvider = create_image_generation_provider(self.model_config["image"])
+        self.web_search: WebSearchProvider = web_search or create_web_search_provider(self.model_config["search"])
         self.images_dir = self.root / ".ai-planner" / "images"
         self.images_dir.mkdir(parents=True, exist_ok=True)
         self.knowledge = knowledge or LocalKnowledgeStore(root=self.root / "Doc" / "AI策划案管线" / "知识库")
@@ -67,7 +71,23 @@ class PlannerPipeline:
         self.model_config = self.model_config_store.save(payload)
         self.llm = create_llm_provider(self.model_config["text"])
         self.image_generator = create_image_generation_provider(self.model_config["image"])
+        self.web_search = create_web_search_provider(self.model_config["search"])
         return self.get_model_config()
+
+    def search_references(self, query: str, limit: int | None = None) -> List[ContextSegment]:
+        query = str(query).strip()
+        if not query:
+            raise ValueError("搜索关键词不能为空")
+        if len(query) > 500:
+            raise ValueError("搜索关键词不能超过 500 个字符")
+        selected_limit = limit if limit is not None else self.model_config["search"].get("max_results", 5)
+        try:
+            selected_limit = int(selected_limit)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("搜索结果数必须是数字") from exc
+        if selected_limit < 1 or selected_limit > 10:
+            raise ValueError("搜索结果数必须在 1 到 10 之间")
+        return self.web_search.search(query, limit=selected_limit)
 
     def generate_image(self, run_id: str, task_id: str, prompt: str = "", size: str | None = None) -> Dict[str, str]:
         run = self.store.load(run_id)
@@ -188,8 +208,17 @@ class PlannerPipeline:
         template_name = "活动优化案模板" if run.route and run.route.suggestion_request else "常规活动策划案模板"
         base.append(ContextSegment("template", template_name, "固定章节：目标、用户、玩法、流程、奖励、异常、界面、埋点、技术和风险。", "template", 98, 36))
         refs = self.knowledge.search(run.request, limit=4)
-        raw_chars = sum(len(item.content) for item in base + refs)
-        run.context = self._compact_context(base + refs, max_chars=12000)
+        web_refs: List[ContextSegment] = []
+        search_config = self.model_config.get("search", {})
+        if search_config.get("auto_context") and len(refs) < 2:
+            try:
+                web_refs = self.search_references(run.request, limit=min(3, int(search_config.get("max_results", 5))))
+            except Exception as exc:
+                run.decisions.append({"type": "web_search", "status": "failed", "error": f"{type(exc).__name__}: {exc}"})
+            else:
+                run.decisions.append({"type": "web_search", "status": "completed", "result_count": len(web_refs)})
+        raw_chars = sum(len(item.content) for item in base + refs + web_refs)
+        run.context = self._compact_context(base + refs + web_refs, max_chars=12000)
         retained_chars = sum(len(item.content) for item in run.context)
         if raw_chars <= 7200:
             tier = "tier_0"
@@ -222,7 +251,7 @@ class PlannerPipeline:
                 continue
             room = max_chars - used
             if room >= 120:
-                result.append(ContextSegment(segment.id, segment.title, content[:room].rstrip() + "…", segment.source, segment.priority, room // 4))
+                result.append(ContextSegment(segment.id, segment.title, content[:room].rstrip() + "…", segment.source, segment.priority, room // 4, segment.url))
             break
         return result
 

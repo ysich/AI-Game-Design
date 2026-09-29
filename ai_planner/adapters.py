@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import base64
+from html import unescape
+from html.parser import HTMLParser
 import json
 import re
 import urllib.error
 import urllib.request
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Protocol, Sequence
+from urllib.parse import parse_qs, quote_plus, unquote, urlencode, urlsplit
 
 from .models import (
     Chapter,
@@ -34,6 +38,10 @@ class LLMProvider(Protocol):
 
 
 class KnowledgeStore(Protocol):
+    def search(self, query: str, limit: int = 5) -> List[ContextSegment]: ...
+
+
+class WebSearchProvider(Protocol):
     def search(self, query: str, limit: int = 5) -> List[ContextSegment]: ...
 
 
@@ -93,6 +101,255 @@ class LocalKnowledgeStore:
             )
             for score, item in ranked[:limit]
         ]
+
+
+class DisabledWebSearchProvider:
+    def search(self, query: str, limit: int = 5) -> List[ContextSegment]:
+        raise ValueError("联网搜索尚未启用，请先在模型设置中配置搜索提供商")
+
+
+class _DuckDuckGoResultParser(HTMLParser):
+    """Parse the small result subset shared by DuckDuckGo's HTML endpoint."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.results: List[Dict[str, str]] = []
+        self._active: Dict[str, str] | None = None
+        self._field = ""
+        self._buffer: List[str] = []
+
+    @staticmethod
+    def _classes(attrs) -> set[str]:
+        value = dict(attrs).get("class", "")
+        return set(str(value).split())
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        classes = self._classes(attrs)
+        if tag == "a" and "result__a" in classes:
+            self._finish()
+            href = dict(attrs).get("href", "")
+            self._active = {"url": str(href), "title": "", "snippet": ""}
+            self._field = "title"
+            self._buffer = []
+        elif self._active and ("result__snippet" in classes or "result-snippet" in classes):
+            self._field = "snippet"
+            self._buffer = []
+
+    def handle_data(self, data: str) -> None:
+        if self._active and self._field:
+            self._buffer.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if not self._active or tag != "a":
+            return
+        if self._field:
+            self._active[self._field] = unescape(" ".join("".join(self._buffer).split()))
+        self._field = ""
+        self._buffer = []
+
+    def _finish(self) -> None:
+        if self._active and self._active.get("title"):
+            self.results.append(self._active)
+        self._active = None
+        self._field = ""
+        self._buffer = []
+
+    def close(self) -> None:
+        super().close()
+        self._finish()
+
+
+def _result_url(value: str) -> str:
+    url = unescape(str(value).strip())
+    parts = urlsplit(url)
+    if parts.hostname and parts.hostname.endswith("duckduckgo.com") and parts.path == "/l/":
+        target = parse_qs(parts.query).get("uddg", [""])[0]
+        if target:
+            return unquote(target)
+    return url if urlsplit(url).scheme in {"http", "https"} and urlsplit(url).netloc else ""
+
+
+class DuckDuckGoSearchProvider:
+    """Keyless web search using DuckDuckGo's HTML result endpoint."""
+
+    def __init__(self, config: Dict[str, object]):
+        self.config = config
+        self.base_url = str(config.get("base_url", "https://html.duckduckgo.com/html/")).rstrip("?")
+        self.timeout = int(config.get("timeout_seconds", 15))
+        self.region = str(config.get("region", "wt-wt"))
+        self.safe_search = bool(config.get("safe_search", True))
+
+    def search(self, query: str, limit: int = 5) -> List[ContextSegment]:
+        query = str(query).strip()
+        if not query:
+            raise ValueError("搜索关键词不能为空")
+        limit = max(1, min(int(limit), 10))
+        params = {"q": query, "kl": self.region}
+        if self.safe_search:
+            params["kp"] = "-2"
+        separator = "&" if "?" in self.base_url else "?"
+        url = self.base_url + separator + urlencode(params)
+        request = urllib.request.Request(
+            url,
+            headers={"User-Agent": "AI-Planner/0.1 (+local research)", "Accept": "text/html"},
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                html = response.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:300]
+            raise RuntimeError(f"联网搜索返回 HTTP {exc.code}: {detail}") from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"联网搜索连接失败：{exc.reason}") from exc
+        except OSError as exc:
+            raise RuntimeError(f"联网搜索请求失败：{exc}") from exc
+        if "anomaly-modal" in html or "challenge-form" in html:
+            raise RuntimeError("DuckDuckGo 要求人机验证，请改用 Bing、Tavily 或 Serper")
+        parser = _DuckDuckGoResultParser()
+        parser.feed(html)
+        parser.close()
+        segments: List[ContextSegment] = []
+        seen = set()
+        for item in parser.results:
+            result_url = _result_url(item.get("url", ""))
+            if not result_url or result_url in seen:
+                continue
+            seen.add(result_url)
+            title = item.get("title", "").strip() or result_url
+            snippet = item.get("snippet", "").strip() or "未提供摘要。"
+            segments.append(ContextSegment(
+                id="web:" + quote_plus(result_url)[:100],
+                title=title,
+                content=snippet,
+                source="web:duckduckgo",
+                priority=65,
+                token_estimate=max(1, len(snippet) // 4),
+                url=result_url,
+            ))
+            if len(segments) >= limit:
+                break
+        return segments
+
+
+class BingSearchProvider:
+    """Keyless web search using Bing's RSS response."""
+
+    def __init__(self, config: Dict[str, object]):
+        self.config = config
+        self.base_url = str(config.get("base_url", "https://www.bing.com/search")).rstrip("?")
+        self.timeout = int(config.get("timeout_seconds", 15))
+        self.region = str(config.get("region", "wt-wt"))
+
+    def search(self, query: str, limit: int = 5) -> List[ContextSegment]:
+        query = str(query).strip()
+        if not query:
+            raise ValueError("搜索关键词不能为空")
+        limit = max(1, min(int(limit), 10))
+        params = {"q": query, "format": "rss"}
+        if self.region and self.region != "wt-wt":
+            params["mkt"] = self.region
+        separator = "&" if "?" in self.base_url else "?"
+        request = urllib.request.Request(
+            self.base_url + separator + urlencode(params),
+            headers={"User-Agent": "AI-Planner/0.1 (+local research)", "Accept": "application/rss+xml, application/xml"},
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                data = response.read()
+            root = ET.fromstring(data)
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:300]
+            raise RuntimeError(f"联网搜索返回 HTTP {exc.code}: {detail}") from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"联网搜索连接失败：{exc.reason}") from exc
+        except (OSError, ET.ParseError) as exc:
+            raise RuntimeError(f"联网搜索请求失败：{exc}") from exc
+        segments = []
+        for item in root.findall("./channel/item"):
+            result_url = _result_url(item.findtext("link", ""))
+            if not result_url:
+                continue
+            title = unescape(item.findtext("title", "").strip()) or result_url
+            snippet = unescape(item.findtext("description", "").strip()) or "未提供摘要。"
+            segments.append(ContextSegment(
+                id="web:" + quote_plus(result_url)[:100], title=title, content=snippet,
+                source="web:bing", priority=65,
+                token_estimate=max(1, len(snippet) // 4), url=result_url,
+            ))
+            if len(segments) >= limit:
+                break
+        return segments
+
+
+class JsonWebSearchProvider:
+    """Adapter for simple Tavily/Serper-style JSON search APIs."""
+
+    def __init__(self, config: Dict[str, object], provider: str):
+        self.config = config
+        self.provider = provider
+        self.base_url = str(config["base_url"]).rstrip("/")
+        self.api_key = str(config.get("api_key", ""))
+        self.timeout = int(config.get("timeout_seconds", 15))
+
+    def search(self, query: str, limit: int = 5) -> List[ContextSegment]:
+        query = str(query).strip()
+        if not query:
+            raise ValueError("搜索关键词不能为空")
+        if not self.api_key:
+            raise ValueError(f"{self.provider} 搜索需要 API Key")
+        limit = max(1, min(int(limit), 10))
+        if self.provider == "tavily":
+            payload = {"api_key": self.api_key, "query": query, "max_results": limit, "search_depth": "basic"}
+            headers = {"Content-Type": "application/json"}
+        else:
+            payload = {"q": query, "num": limit}
+            headers = {"Content-Type": "application/json", "X-API-KEY": self.api_key}
+        request = urllib.request.Request(
+            self.base_url,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                data = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:300]
+            raise RuntimeError(f"联网搜索返回 HTTP {exc.code}: {detail}") from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"联网搜索连接失败：{exc.reason}") from exc
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"联网搜索请求失败：{exc}") from exc
+        raw_items = data.get("results", []) if self.provider == "tavily" else data.get("organic", [])
+        segments = []
+        for item in raw_items[:limit]:
+            if not isinstance(item, dict):
+                continue
+            result_url = str(item.get("url", "")).strip()
+            result_url = _result_url(result_url)
+            title = str(item.get("title", "")).strip() or result_url
+            snippet = str(item.get("content", item.get("snippet", ""))).strip() or "未提供摘要。"
+            if not result_url:
+                continue
+            segments.append(ContextSegment(
+                id="web:" + quote_plus(result_url)[:100], title=title, content=snippet,
+                source=f"web:{self.provider}", priority=65,
+                token_estimate=max(1, len(snippet) // 4), url=result_url,
+            ))
+        return segments
+
+
+def create_web_search_provider(config: Dict[str, object]) -> WebSearchProvider:
+    provider = str(config.get("provider", "disabled"))
+    if provider == "bing":
+        return BingSearchProvider(config)
+    if provider == "duckduckgo":
+        return DuckDuckGoSearchProvider(config)
+    if provider in {"tavily", "serper"}:
+        return JsonWebSearchProvider(config, provider)
+    return DisabledWebSearchProvider()
 
 
 class LocalLLMProvider:
@@ -157,7 +414,7 @@ class LocalLLMProvider:
                 target.status = "revised"
             return PlanningDocument(existing.id, existing.title, existing.activity_type, chapters, existing.version + 1, dict(existing.metadata))
 
-        ref_titles = ", ".join(item.title for item in context if item.source.startswith(("case:", "md:"))) or "暂无本地案例"
+        ref_titles = ", ".join(item.title for item in context if item.source.startswith(("case:", "md:", "web:"))) or "暂无可用案例"
         chapters = [
             Chapter("overview", "1. 项目概述", f"需求输入：{request}\n\n目标：明确活动要解决的用户问题、业务目标和成功指标。\n参考案例：{ref_titles}"),
             Chapter("audience", "2. 用户与目标", "目标用户：待策划确认年龄层、活跃阶段与核心动机。\n成功指标：参与人数、参与率、完成率和复访率。"),

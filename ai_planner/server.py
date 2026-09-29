@@ -136,6 +136,18 @@ class PlannerRequestHandler(BaseHTTPRequestHandler):
                     items = [item for item in items if needle in f"{item.title} {item.content} {' '.join(item.tags)}".lower()]
                 self._send(200, [item.__dict__ for item in items])
                 return
+            if path in ("/api/references/search", "/api/references"):
+                keyword = query.get("q", [""])[0]
+                limit_value = query.get("limit", [None])[0]
+                limit = int(limit_value) if limit_value else None
+                items = self.pipeline.search_references(keyword, limit=limit)
+                self._send(200, {
+                    "query": keyword,
+                    "items": [to_dict(item) for item in items],
+                    "count": len(items),
+                    "provider": self.pipeline.model_config.get("search", {}).get("provider", "disabled"),
+                })
+                return
             if path == "/api/analytics":
                 self._send(200, self._analytics())
                 return
@@ -158,6 +170,8 @@ class PlannerRequestHandler(BaseHTTPRequestHandler):
             self._send(404, {"error": "not found"})
         except KeyError as exc:
             self._send(404, {"error": str(exc)})
+        except ValueError as exc:
+            self._send(400, {"error": str(exc)})
         except Exception as exc:
             self._send(500, {"error": f"{type(exc).__name__}: {exc}"})
 

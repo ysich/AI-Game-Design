@@ -15,6 +15,8 @@ python -m ai_planner.cli serve
 
 启动工作台后，点击顶部的“模型设置”可分别配置文本模型与图片模型。文本默认使用本地规则模型，也可接入 OpenAI 兼容的 Chat Completions 接口；图片模型默认关闭，启用后接入 OpenAI 兼容的 Images API。两类模型可以使用不同的地址、模型名称和 API Key。配置会保存到 `.ai-planner/model-config.json` 并立即生效，API Key 不会通过读取配置接口返回。图片工作台生成的结果保存在 `.ai-planner/images/`。
 
+“联网参考”入口已接入真实搜索。默认使用无需 API Key 的 Bing RSS 搜索，也可以在模型设置中切换到 DuckDuckGo、Tavily 或 Serper；后两者可按需填写 API Key。搜索结果只在工作台中展示标题、摘要和原始链接；默认不会自动改变策划案上下文。打开联网设置中的“本地参考不足时自动加入策划上下文”后，管线才会在本地资料命中不足时追加最多 3 条外部参考。联网结果可能过期，生成前请人工核验。
+
 ## API
 
 - `GET /api/health`：健康检查。
@@ -36,19 +38,20 @@ python -m ai_planner.cli serve
 - `POST /api/coding`：根据 `run_id` 生成研发用 Coding 案。
 - `POST /api/test-cases/run`：批量运行本地 Planner 测试输入。
 - `GET /api/knowledge?q=奖励`：检索本地知识库条目。
+- `GET /api/references/search?q=签到活动&limit=5`：检索联网参考，返回标题、摘要、来源和原始 URL；也兼容 `/api/references`。
 
 ## 代码结构
 
 - `ai_planner/models.py`：数据契约与可序列化模型。
 - `ai_planner/pipeline.py`：六阶段工作流和持久化边界。
-- `ai_planner/adapters.py`：本地 LLM、OpenAI 兼容文本/图片模型、知识库、视觉任务和 Markdown 导出适配器。
+- `ai_planner/adapters.py`：本地 LLM、OpenAI 兼容文本/图片模型、联网搜索、知识库、视觉任务和 Markdown 导出适配器。
 - `ai_planner/storage.py`：JSON 快照存储与本地 Markdown 文档库。
 - `Doc/AI策划案管线/知识库/`：本地 Markdown 模板、约束和历史案例。
 - `ai_planner/server.py`：标准库 HTTP API。
 - `web/index.html`：无构建依赖的本地工作台。
 - `web/data-manager.html`：本地 Markdown 文档与 JSON 运行数据库编辑器。
 - `web/analytics.html`、`web/coding.html`、`web/planner-test-cases.html`：本地数据看板、Coding 案和测试用例页面。
-- `web/model-settings.html`：模型提供商、模型名称和推理参数配置页面。
+- `web/model-settings.html`：模型提供商、模型名称、联网搜索和推理参数配置页面。
 - `web/knowledge.html`、`web/design-document-knowledge.html`、`web/planner-image-studio.html`：知识库管理、知识问答和图片生成工作台。
 - `Doc/AI策划案管线/设计大纲.md`：设计、阶段计划和主动迭代记录。
 

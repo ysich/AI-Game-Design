@@ -64,6 +64,7 @@ class ContextSegment:
     source: str
     priority: int = 50
     token_estimate: int = 0
+    url: str = ""
 
 
 @dataclass

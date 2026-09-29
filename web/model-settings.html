@@ -19,12 +19,12 @@
       <div>
         <div class="eyebrow">Model Providers</div>
         <h1>配置文本与图片模型</h1>
-        <p class="subtitle">两类模型可使用不同接口和密钥，保存后立即应用到下一次生成。</p>
-        <div class="status-row"><span class="badge" id="text-badge">文本模型：读取中</span><span class="badge" id="image-badge">图片模型：读取中</span></div>
+        <p class="subtitle">文本、图片和联网参考可使用不同接口和密钥，保存后立即应用。</p>
+        <div class="status-row"><span class="badge" id="text-badge">文本模型：读取中</span><span class="badge" id="image-badge">图片模型：读取中</span><span class="badge" id="search-badge">联网参考：读取中</span></div>
       </div>
     </div>
     <section class="panel settings-form">
-      <div class="tabs"><button class="tab active" data-pane="text">文本模型</button><button class="tab" data-pane="image">图片模型</button></div>
+      <div class="tabs"><button class="tab active" data-pane="text">文本模型</button><button class="tab" data-pane="image">图片模型</button><button class="tab" data-pane="search">联网参考</button></div>
       <div class="config-pane active" id="text-pane">
         <div class="pane-heading"><h2>策划案文本模型</h2><p>用于需求路由、策划案生成和局部修改。</p></div>
         <div class="form-grid">
@@ -51,19 +51,34 @@
         </div>
         <div class="provider-note">图片生成调用 <code>/images/generations</code>，要求接口支持返回 <code>b64_json</code>。结果保存在项目的 <code>.ai-planner/images/</code> 目录。</div>
       </div>
+      <div class="config-pane" id="search-pane">
+        <div class="pane-heading"><h2>联网参考</h2><p>在工作台检索外部案例；结果会显示原始链接，手动搜索不会修改本地文档。</p></div>
+        <div class="form-grid">
+          <div class="field"><label for="search-provider">搜索提供商</label><select id="search-provider"><option value="bing">Bing RSS（免 Key）</option><option value="duckduckgo">DuckDuckGo（免 Key）</option><option value="tavily">Tavily Search</option><option value="serper">Serper</option><option value="disabled">不启用联网搜索</option></select></div>
+          <div class="field"><label for="search-region">搜索区域</label><input id="search-region" placeholder="wt-wt" autocomplete="off" /></div>
+          <div class="field full"><label for="search-base-url">接口地址</label><input id="search-base-url" placeholder="https://www.bing.com/search" autocomplete="url" /></div>
+          <div class="field full"><label for="search-api-key">API Key</label><input id="search-api-key" type="password" placeholder="DuckDuckGo 可留空；留空表示保留当前 Key" autocomplete="new-password" /><span class="secret-hint" id="search-key-hint"></span><label class="checkbox"><input type="checkbox" id="search-clear-key" /> 清除已保存的 API Key</label></div>
+          <div class="field"><label for="search-max-results">默认结果数</label><input id="search-max-results" type="number" min="1" max="10" step="1" /></div>
+          <div class="field"><label for="search-timeout">请求超时（秒）</label><input id="search-timeout" type="number" min="3" max="120" step="1" /></div>
+          <label class="checkbox full"><input type="checkbox" id="search-auto-context" /> 本地参考不足时，自动把联网结果加入策划上下文</label>
+        </div>
+        <div class="provider-note"><strong>联网结果仅作参考</strong>工作台默认手动搜索；启用自动上下文后，仅在本地命中不足时补充结果。生成内容仍需人工核验来源和时效。</div>
+      </div>
       <div class="actions"><button class="primary" id="save">保存并应用</button><button class="secondary" id="reset">恢复默认</button><span class="status" id="status"></span></div>
     </section>
   </main>
   <script>
     const $=selector=>document.querySelector(selector);
-    const defaults={text:{provider:'local',model:'local-rule-v1',base_url:'https://api.openai.com/v1',temperature:0.4,max_tokens:4000,timeout_seconds:60,api_key_configured:false},image:{provider:'disabled',model:'gpt-image-1',base_url:'https://api.openai.com/v1',size:'1024x1024',quality:'auto',timeout_seconds:120,api_key_configured:false}};
+    const defaults={text:{provider:'local',model:'local-rule-v1',base_url:'https://api.openai.com/v1',temperature:0.4,max_tokens:4000,timeout_seconds:60,api_key_configured:false},image:{provider:'disabled',model:'gpt-image-1',base_url:'https://api.openai.com/v1',size:'1024x1024',quality:'auto',timeout_seconds:120,api_key_configured:false},search:{provider:'bing',base_url:'https://www.bing.com/search',region:'wt-wt',max_results:5,timeout_seconds:15,auto_context:false,api_key_configured:false}};
+    const searchUrls={bing:'https://www.bing.com/search',duckduckgo:'https://html.duckduckgo.com/html/',tavily:'https://api.tavily.com/search',serper:'https://google.serper.dev/search'};
     function setSecret(kind,configured){$('#'+kind+'-api-key').value='';$('#'+kind+'-key-hint').textContent=configured?'当前已配置 API Key，留空保存时会继续使用。':'当前未配置 API Key。';$('#'+kind+'-clear-key').checked=false;}
-    function setForm(config){const text=config.text,image=config.image;$('#text-provider').value=text.provider;$('#text-model').value=text.model;$('#text-base-url').value=text.base_url;$('#text-temperature').value=text.temperature;$('#text-max-tokens').value=text.max_tokens;$('#text-timeout').value=text.timeout_seconds;setSecret('text',text.api_key_configured);$('#image-provider').value=image.provider;$('#image-model').value=image.model;$('#image-base-url').value=image.base_url;$('#image-size').value=image.size;$('#image-quality').value=image.quality;$('#image-timeout').value=image.timeout_seconds;setSecret('image',image.api_key_configured);$('#text-badge').textContent='文本模型：'+(text.provider==='local'?'本地规则':text.model);$('#image-badge').textContent='图片模型：'+(image.provider==='disabled'?'未启用':image.model);}
-    function payload(){return{text:{provider:$('#text-provider').value,model:$('#text-model').value,base_url:$('#text-base-url').value,api_key:$('#text-api-key').value,temperature:$('#text-temperature').value,max_tokens:$('#text-max-tokens').value,timeout_seconds:$('#text-timeout').value,clear_api_key:$('#text-clear-key').checked},image:{provider:$('#image-provider').value,model:$('#image-model').value,base_url:$('#image-base-url').value,api_key:$('#image-api-key').value,size:$('#image-size').value,quality:$('#image-quality').value,timeout_seconds:$('#image-timeout').value,clear_api_key:$('#image-clear-key').checked}};}
+    function setForm(config){const text=config.text,image=config.image,search=config.search||defaults.search;$('#text-provider').value=text.provider;$('#text-model').value=text.model;$('#text-base-url').value=text.base_url;$('#text-temperature').value=text.temperature;$('#text-max-tokens').value=text.max_tokens;$('#text-timeout').value=text.timeout_seconds;setSecret('text',text.api_key_configured);$('#image-provider').value=image.provider;$('#image-model').value=image.model;$('#image-base-url').value=image.base_url;$('#image-size').value=image.size;$('#image-quality').value=image.quality;$('#image-timeout').value=image.timeout_seconds;setSecret('image',image.api_key_configured);$('#search-provider').value=search.provider;$('#search-base-url').value=search.base_url;$('#search-region').value=search.region;$('#search-max-results').value=search.max_results;$('#search-timeout').value=search.timeout_seconds;$('#search-auto-context').checked=search.auto_context;setSecret('search',search.api_key_configured);$('#text-badge').textContent='文本模型：'+(text.provider==='local'?'本地规则':text.model);$('#image-badge').textContent='图片模型：'+(image.provider==='disabled'?'未启用':image.model);$('#search-badge').textContent='联网参考：'+(search.provider==='disabled'?'未启用':search.provider);}
+    function payload(){return{text:{provider:$('#text-provider').value,model:$('#text-model').value,base_url:$('#text-base-url').value,api_key:$('#text-api-key').value,temperature:$('#text-temperature').value,max_tokens:$('#text-max-tokens').value,timeout_seconds:$('#text-timeout').value,clear_api_key:$('#text-clear-key').checked},image:{provider:$('#image-provider').value,model:$('#image-model').value,base_url:$('#image-base-url').value,api_key:$('#image-api-key').value,size:$('#image-size').value,quality:$('#image-quality').value,timeout_seconds:$('#image-timeout').value,clear_api_key:$('#image-clear-key').checked},search:{provider:$('#search-provider').value,base_url:$('#search-base-url').value,region:$('#search-region').value,api_key:$('#search-api-key').value,max_results:$('#search-max-results').value,timeout_seconds:$('#search-timeout').value,auto_context:$('#search-auto-context').checked,clear_api_key:$('#search-clear-key').checked}};}
     async function load(){const response=await fetch('/api/config');const data=await response.json();if(!response.ok)throw new Error(data.error||'模型配置读取失败');setForm(data);}
     document.querySelectorAll('[data-pane]').forEach(tab=>tab.onclick=()=>{document.querySelectorAll('[data-pane]').forEach(item=>item.classList.toggle('active',item===tab));document.querySelectorAll('.config-pane').forEach(pane=>pane.classList.toggle('active',pane.id===tab.dataset.pane+'-pane'));});
+    $('#search-provider').onchange=()=>{const url=searchUrls[$('#search-provider').value];if(url)$('#search-base-url').value=url;};
     $('#save').onclick=async()=>{const button=$('#save');button.disabled=true;$('#status').textContent='保存中…';try{const response=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload())});const data=await response.json();if(!response.ok)throw new Error(data.error||'模型配置保存失败');setForm(data);$('#status').textContent='已保存并应用';}catch(error){$('#status').textContent=error.message;}finally{button.disabled=false;}};
-    $('#reset').onclick=()=>{setForm(defaults);$('#text-clear-key').checked=true;$('#image-clear-key').checked=true;$('#status').textContent='点击“保存并应用”后恢复默认';};
+    $('#reset').onclick=()=>{setForm(defaults);$('#text-clear-key').checked=true;$('#image-clear-key').checked=true;$('#search-clear-key').checked=true;$('#status').textContent='点击“保存并应用”后恢复默认';};
     load().catch(error=>$('#status').textContent=error.message);
   </script>
 </body>

@@ -6,71 +6,64 @@
   <title>模型设置 · AI 策划案助手</title>
   <link rel="stylesheet" href="/web/portal.css" />
   <style>
-    .settings-form{max-width:760px}.secret-hint{color:var(--quiet);font-size:10px;line-height:1.5}.actions{display:flex;align-items:center;gap:10px;margin-top:18px}.secondary{padding:10px 14px;border:1px solid var(--line);border-radius:10px;color:var(--muted);background:#fff;font-size:12px;cursor:pointer}.secondary:hover{border-color:#bfd4ff;color:var(--accent);background:var(--accent-soft)}.checkbox{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11px}.checkbox input{accent-color:var(--accent)}.provider-note{margin-top:16px;padding:13px;border:1px solid var(--line);border-radius:11px;color:var(--muted);background:#f8faff;font-size:11px;line-height:1.65}.provider-note strong{color:var(--ink)}
+    .settings-form{max-width:820px}.secret-hint{color:var(--quiet);font-size:10px;line-height:1.5}.actions{display:flex;align-items:center;gap:10px;margin-top:18px}.secondary{padding:10px 14px;border:1px solid var(--line);border-radius:10px;color:var(--muted);background:#fff;font-size:12px;cursor:pointer}.secondary:hover{border-color:#bfd4ff;color:var(--accent);background:var(--accent-soft)}.checkbox{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11px}.checkbox input{accent-color:var(--accent)}.provider-note{margin-top:16px;padding:13px;border:1px solid var(--line);border-radius:8px;color:var(--muted);background:#f8faff;font-size:11px;line-height:1.65}.provider-note strong{color:var(--ink)}.config-pane{display:none}.config-pane.active{display:block}.pane-heading{margin:0 0 16px}.pane-heading h2{margin:0 0 5px;font-size:16px}.pane-heading p{margin:0;color:var(--muted);font-size:11px}.status-row{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
   </style>
 </head>
 <body>
   <header class="topbar">
     <div class="brand"><span class="brand-mark">AI</span><span>模型设置</span></div>
-    <nav class="top-actions"><a href="/web/index.html">返回工作台</a></nav>
+    <nav class="top-actions"><a href="/web/planner-image-studio.html">图片工作台</a><a href="/web/index.html">返回工作台</a></nav>
   </header>
   <main class="page">
     <div class="title-row">
       <div>
-        <div class="eyebrow">Model Provider</div>
-        <h1>配置生成模型</h1>
-        <p class="subtitle">设置会保存到当前项目本地，并在下一次生成时使用。保存后无需重启服务。</p>
+        <div class="eyebrow">Model Providers</div>
+        <h1>配置文本与图片模型</h1>
+        <p class="subtitle">两类模型可使用不同接口和密钥，保存后立即应用到下一次生成。</p>
+        <div class="status-row"><span class="badge" id="text-badge">文本模型：读取中</span><span class="badge" id="image-badge">图片模型：读取中</span></div>
       </div>
-      <span class="badge" id="current-badge">读取中…</span>
     </div>
     <section class="panel settings-form">
-      <div class="form-grid">
-        <div class="field">
-          <label for="provider">模型提供商</label>
-          <select id="provider">
-            <option value="local">本地规则模型</option>
-            <option value="openai_compatible">OpenAI 兼容接口</option>
-          </select>
+      <div class="tabs"><button class="tab active" data-pane="text">文本模型</button><button class="tab" data-pane="image">图片模型</button></div>
+      <div class="config-pane active" id="text-pane">
+        <div class="pane-heading"><h2>策划案文本模型</h2><p>用于需求路由、策划案生成和局部修改。</p></div>
+        <div class="form-grid">
+          <div class="field"><label for="text-provider">模型提供商</label><select id="text-provider"><option value="local">本地规则模型</option><option value="openai_compatible">OpenAI 兼容接口</option></select></div>
+          <div class="field"><label for="text-model">模型名称</label><input id="text-model" placeholder="例如：gpt-4o-mini" autocomplete="off" /></div>
+          <div class="field full"><label for="text-base-url">接口地址</label><input id="text-base-url" placeholder="https://api.openai.com/v1" autocomplete="url" /></div>
+          <div class="field full"><label for="text-api-key">API Key</label><input id="text-api-key" type="password" placeholder="留空表示保留当前 Key" autocomplete="new-password" /><span class="secret-hint" id="text-key-hint"></span><label class="checkbox"><input type="checkbox" id="text-clear-key" /> 清除已保存的 API Key</label></div>
+          <div class="field"><label for="text-temperature">Temperature</label><input id="text-temperature" type="number" min="0" max="2" step="0.1" /></div>
+          <div class="field"><label for="text-max-tokens">最大输出 Token</label><input id="text-max-tokens" type="number" min="256" max="32000" step="256" /></div>
+          <div class="field"><label for="text-timeout">请求超时（秒）</label><input id="text-timeout" type="number" min="5" max="300" step="5" /></div>
         </div>
-        <div class="field">
-          <label for="model">模型名称</label>
-          <input id="model" placeholder="例如：gpt-4o-mini" autocomplete="off" />
-        </div>
-        <div class="field full">
-          <label for="base-url">接口地址</label>
-          <input id="base-url" placeholder="https://api.openai.com/v1" autocomplete="url" />
-        </div>
-        <div class="field full">
-          <label for="api-key">API Key</label>
-          <input id="api-key" type="password" placeholder="留空表示保留当前 Key" autocomplete="new-password" />
-          <span class="secret-hint" id="key-hint">当前未配置 API Key。</span>
-          <label class="checkbox"><input type="checkbox" id="clear-key" /> 清除已保存的 API Key</label>
-        </div>
-        <div class="field">
-          <label for="temperature">Temperature</label>
-          <input id="temperature" type="number" min="0" max="2" step="0.1" />
-        </div>
-        <div class="field">
-          <label for="max-tokens">最大输出 Token</label>
-          <input id="max-tokens" type="number" min="256" max="32000" step="256" />
-        </div>
-        <div class="field">
-          <label for="timeout">请求超时（秒）</label>
-          <input id="timeout" type="number" min="5" max="300" step="5" />
-        </div>
+        <div class="provider-note"><strong>本地规则模型</strong>无需联网；OpenAI 兼容模式调用 <code>/chat/completions</code>。</div>
       </div>
-      <div class="provider-note"><strong>本地规则模型：</strong>无需网络和 API Key，适合离线演示。<br /><strong>OpenAI 兼容接口：</strong>服务端会向接口的 <code>/chat/completions</code> 发送结构化生成请求，适用于 OpenAI、兼容网关和自部署模型服务。</div>
-      <div class="actions"><button class="primary" id="save">保存并应用</button><button class="secondary" id="reset">恢复本地默认</button><span class="status" id="status"></span></div>
+      <div class="config-pane" id="image-pane">
+        <div class="pane-heading"><h2>图片生成模型</h2><p>用于根据策划案中的界面任务生成 UI 效果图。</p></div>
+        <div class="form-grid">
+          <div class="field"><label for="image-provider">图片提供商</label><select id="image-provider"><option value="disabled">不启用生图</option><option value="openai_compatible">OpenAI 兼容 Images API</option></select></div>
+          <div class="field"><label for="image-model">模型名称</label><input id="image-model" placeholder="例如：gpt-image-1" autocomplete="off" /></div>
+          <div class="field full"><label for="image-base-url">接口地址</label><input id="image-base-url" placeholder="https://api.openai.com/v1" autocomplete="url" /></div>
+          <div class="field full"><label for="image-api-key">API Key</label><input id="image-api-key" type="password" placeholder="留空表示保留当前 Key" autocomplete="new-password" /><span class="secret-hint" id="image-key-hint"></span><label class="checkbox"><input type="checkbox" id="image-clear-key" /> 清除已保存的 API Key</label></div>
+          <div class="field"><label for="image-size">图片尺寸</label><select id="image-size"><option value="1024x1024">1024 × 1024</option><option value="1536x1024">1536 × 1024</option><option value="1024x1536">1024 × 1536</option><option value="auto">自动</option></select></div>
+          <div class="field"><label for="image-quality">图片质量</label><select id="image-quality"><option value="auto">自动</option><option value="low">低</option><option value="medium">中</option><option value="high">高</option><option value="standard">Standard（兼容）</option><option value="hd">HD（兼容）</option></select></div>
+          <div class="field"><label for="image-timeout">请求超时（秒）</label><input id="image-timeout" type="number" min="5" max="600" step="5" /></div>
+        </div>
+        <div class="provider-note">图片生成调用 <code>/images/generations</code>，要求接口支持返回 <code>b64_json</code>。结果保存在项目的 <code>.ai-planner/images/</code> 目录。</div>
+      </div>
+      <div class="actions"><button class="primary" id="save">保存并应用</button><button class="secondary" id="reset">恢复默认</button><span class="status" id="status"></span></div>
     </section>
   </main>
   <script>
-    const $ = (selector) => document.querySelector(selector);
-    const fields = {provider: $('#provider'), model: $('#model'), base_url: $('#base-url'), api_key: $('#api-key'), temperature: $('#temperature'), max_tokens: $('#max-tokens'), timeout_seconds: $('#timeout')};
-    let current = null;
-    function setForm(config){current=config;fields.provider.value=config.provider;fields.model.value=config.model;fields.base_url.value=config.base_url;fields.api_key.value='';fields.temperature.value=config.temperature;fields.max_tokens.value=config.max_tokens;fields.timeout_seconds.value=config.timeout_seconds;$('#key-hint').textContent=config.api_key_configured?'当前已配置 API Key，留空保存时会继续使用。':'当前未配置 API Key。';$('#current-badge').textContent=config.provider==='local'?'当前：本地规则模型':'当前：OpenAI 兼容接口';}
-    async function load(){const response=await fetch('/api/config');const config=await response.json();if(!response.ok)throw new Error(config.error||'模型配置读取失败');setForm(config);}
-    $('#save').onclick=async()=>{const button=$('#save');button.disabled=true;$('#status').textContent='保存中…';const payload={provider:fields.provider.value,model:fields.model.value,base_url:fields.base_url.value,api_key:fields.api_key.value,temperature:fields.temperature.value,max_tokens:fields.max_tokens.value,timeout_seconds:fields.timeout_seconds.value,clear_api_key:$('#clear-key').checked};try{const response=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const data=await response.json();if(!response.ok)throw new Error(data.error||'模型配置保存失败');setForm(data);$('#clear-key').checked=false;$('#status').textContent='已保存并应用';}catch(error){$('#status').textContent=error.message;}finally{button.disabled=false;}};
-    $('#reset').onclick=()=>{setForm({provider:'local',model:'local-rule-v1',base_url:'https://api.openai.com/v1',temperature:0.4,max_tokens:4000,timeout_seconds:60,api_key_configured:false});$('#api-key').value='';$('#clear-key').checked=true;$('#status').textContent='点击“保存并应用”后恢复本地默认';};
+    const $=selector=>document.querySelector(selector);
+    const defaults={text:{provider:'local',model:'local-rule-v1',base_url:'https://api.openai.com/v1',temperature:0.4,max_tokens:4000,timeout_seconds:60,api_key_configured:false},image:{provider:'disabled',model:'gpt-image-1',base_url:'https://api.openai.com/v1',size:'1024x1024',quality:'auto',timeout_seconds:120,api_key_configured:false}};
+    function setSecret(kind,configured){$('#'+kind+'-api-key').value='';$('#'+kind+'-key-hint').textContent=configured?'当前已配置 API Key，留空保存时会继续使用。':'当前未配置 API Key。';$('#'+kind+'-clear-key').checked=false;}
+    function setForm(config){const text=config.text,image=config.image;$('#text-provider').value=text.provider;$('#text-model').value=text.model;$('#text-base-url').value=text.base_url;$('#text-temperature').value=text.temperature;$('#text-max-tokens').value=text.max_tokens;$('#text-timeout').value=text.timeout_seconds;setSecret('text',text.api_key_configured);$('#image-provider').value=image.provider;$('#image-model').value=image.model;$('#image-base-url').value=image.base_url;$('#image-size').value=image.size;$('#image-quality').value=image.quality;$('#image-timeout').value=image.timeout_seconds;setSecret('image',image.api_key_configured);$('#text-badge').textContent='文本模型：'+(text.provider==='local'?'本地规则':text.model);$('#image-badge').textContent='图片模型：'+(image.provider==='disabled'?'未启用':image.model);}
+    function payload(){return{text:{provider:$('#text-provider').value,model:$('#text-model').value,base_url:$('#text-base-url').value,api_key:$('#text-api-key').value,temperature:$('#text-temperature').value,max_tokens:$('#text-max-tokens').value,timeout_seconds:$('#text-timeout').value,clear_api_key:$('#text-clear-key').checked},image:{provider:$('#image-provider').value,model:$('#image-model').value,base_url:$('#image-base-url').value,api_key:$('#image-api-key').value,size:$('#image-size').value,quality:$('#image-quality').value,timeout_seconds:$('#image-timeout').value,clear_api_key:$('#image-clear-key').checked}};}
+    async function load(){const response=await fetch('/api/config');const data=await response.json();if(!response.ok)throw new Error(data.error||'模型配置读取失败');setForm(data);}
+    document.querySelectorAll('[data-pane]').forEach(tab=>tab.onclick=()=>{document.querySelectorAll('[data-pane]').forEach(item=>item.classList.toggle('active',item===tab));document.querySelectorAll('.config-pane').forEach(pane=>pane.classList.toggle('active',pane.id===tab.dataset.pane+'-pane'));});
+    $('#save').onclick=async()=>{const button=$('#save');button.disabled=true;$('#status').textContent='保存中…';try{const response=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload())});const data=await response.json();if(!response.ok)throw new Error(data.error||'模型配置保存失败');setForm(data);$('#status').textContent='已保存并应用';}catch(error){$('#status').textContent=error.message;}finally{button.disabled=false;}};
+    $('#reset').onclick=()=>{setForm(defaults);$('#text-clear-key').checked=true;$('#image-clear-key').checked=true;$('#status').textContent='点击“保存并应用”后恢复默认';};
     load().catch(error=>$('#status').textContent=error.message);
   </script>
 </body>

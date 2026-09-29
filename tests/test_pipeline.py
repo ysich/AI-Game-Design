@@ -1,4 +1,5 @@
 import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -9,11 +10,11 @@ from ai_planner.pipeline import PlannerPipeline
 
 class PlannerPipelineTests(unittest.TestCase):
     def setUp(self):
-        # The managed sandbox only permits workspace writes; run IDs isolate each test.
-        self.pipeline = PlannerPipeline(Path.cwd())
+        self.temp_dir = tempfile.TemporaryDirectory(dir=Path.cwd())
+        self.pipeline = PlannerPipeline(Path(self.temp_dir.name))
 
     def tearDown(self):
-        pass
+        self.temp_dir.cleanup()
 
     def test_short_request_stops_for_clarification(self):
         run = self.pipeline.run("做活动")

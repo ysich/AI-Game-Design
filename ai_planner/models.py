@@ -124,6 +124,7 @@ class WorkflowRun:
     document: Optional[PlanningDocument] = None
     findings: List[CheckFinding] = field(default_factory=list)
     visual_tasks: List[VisualTask] = field(default_factory=list)
+    generated_images: List[Dict[str, str]] = field(default_factory=list)
     flow_edges: List[Dict[str, str]] = field(default_factory=list)
     decisions: List[Dict[str, Any]] = field(default_factory=list)
     exports: Dict[str, str] = field(default_factory=dict)
@@ -207,6 +208,7 @@ def run_from_dict(data: Dict[str, Any]) -> WorkflowRun:
             for item in data.get("findings", [])
         ],
         visual_tasks=[VisualTask(**item) for item in data.get("visual_tasks", [])],
+        generated_images=data.get("generated_images", []),
         flow_edges=data.get("flow_edges", []),
         decisions=data.get("decisions", []),
         exports=data.get("exports", {}),

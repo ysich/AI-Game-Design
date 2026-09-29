@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import re
 import urllib.error
@@ -38,6 +39,10 @@ class KnowledgeStore(Protocol):
 
 class DocumentExporter(Protocol):
     def export_markdown(self, document: PlanningDocument, findings: Iterable[object], visual_tasks: Sequence[VisualTask]) -> str: ...
+
+
+class ImageGenerationProvider(Protocol):
+    def generate(self, prompt: str) -> tuple[bytes, str, str]: ...
 
 
 @dataclass
@@ -304,6 +309,81 @@ def create_llm_provider(config: Dict[str, object]) -> LLMProvider:
     if config.get("provider") == "openai_compatible":
         return OpenAICompatibleLLMProvider(config)
     return LocalLLMProvider()
+
+
+class DisabledImageGenerationProvider:
+    def generate(self, prompt: str) -> tuple[bytes, str, str]:
+        raise ValueError("图片模型尚未启用，请先在模型设置中配置")
+
+
+class OpenAICompatibleImageGenerationProvider:
+    """Image adapter for OpenAI compatible Images API endpoints."""
+
+    def __init__(self, config: Dict[str, object]):
+        self.config = config
+        self.base_url = str(config["base_url"]).rstrip("/")
+        self.model = str(config["model"])
+        self.api_key = str(config.get("api_key", ""))
+        self.timeout = int(config.get("timeout_seconds", 120))
+
+    def generate(self, prompt: str) -> tuple[bytes, str, str]:
+        url = self.base_url if self.base_url.endswith("/images/generations") else self.base_url + "/images/generations"
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "size": self.config.get("size", "1024x1024"),
+            "quality": self.config.get("quality", "auto"),
+            "n": 1,
+        }
+        # GPT Image returns base64 by default and rejects response_format;
+        # DALL-E and most compatible endpoints need it explicitly.
+        if not self.model.lower().startswith("gpt-image"):
+            payload["response_format"] = "b64_json"
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        request = urllib.request.Request(
+            url,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                result = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:500]
+            raise RuntimeError(f"图片模型接口返回 HTTP {exc.code}: {detail}") from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"图片模型接口连接失败：{exc.reason}") from exc
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"图片模型接口请求失败：{exc}") from exc
+        try:
+            item = result["data"][0]
+            encoded = item["b64_json"]
+            image = base64.b64decode(encoded, validate=True)
+        except (KeyError, IndexError, TypeError, ValueError) as exc:
+            raise RuntimeError("图片模型响应缺少 data[0].b64_json") from exc
+        if not image or len(image) > 25 * 1024 * 1024:
+            raise RuntimeError("图片模型返回了空图片或超过 25 MB 的图片")
+        mime_type = _detect_image_mime(image)
+        return image, mime_type, str(item.get("revised_prompt", ""))
+
+
+def _detect_image_mime(data: bytes) -> str:
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        return "image/webp"
+    raise RuntimeError("图片模型返回了不支持的图片格式")
+
+
+def create_image_generation_provider(config: Dict[str, object]) -> ImageGenerationProvider:
+    if config.get("provider") == "openai_compatible":
+        return OpenAICompatibleImageGenerationProvider(config)
+    return DisabledImageGenerationProvider()
 
 
 class MarkdownExporter:

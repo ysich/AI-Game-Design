@@ -115,6 +115,18 @@ class PlannerRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/config":
                 self._send(200, self.pipeline.get_model_config())
                 return
+            if path.startswith("/api/images/"):
+                filename = path.split("/", 3)[3]
+                if Path(filename).name != filename:
+                    self._send(404, {"error": "not found"})
+                    return
+                image_path = self.pipeline.images_dir / filename
+                if not image_path.is_file():
+                    self._send(404, {"error": "image not found"})
+                    return
+                content_type = mimetypes.guess_type(image_path.name)[0] or "application/octet-stream"
+                self._send(200, image_path.read_bytes(), content_type)
+                return
             if path == "/api/runs":
                 self._send(200, [to_dict(run) for run in self.pipeline.store.list()])
                 return
@@ -160,6 +172,14 @@ class PlannerRequestHandler(BaseHTTPRequestHandler):
             body = self._json_body()
             if path == "/api/config":
                 self._send(200, self.pipeline.update_model_config(body))
+                return
+            if path == "/api/images/generate":
+                run_id = str(body.get("run_id", "")).strip()
+                task_id = str(body.get("task_id", "")).strip()
+                if not run_id or not task_id:
+                    raise ValueError("run_id 和 task_id 不能为空")
+                result = self.pipeline.generate_image(run_id, task_id, str(body.get("prompt", "")))
+                self._send(201, result)
                 return
             if path == "/api/runs":
                 request = str(body.get("request", ""))

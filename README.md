@@ -13,12 +13,14 @@ python -m ai_planner.cli serve
 
 打开 <http://127.0.0.1:8765/> 使用工作台。运行记录会保存到项目目录下的 `.ai-planner/runs/`；策划案正文会写入 `Doc/AI策划案管线/文档库/`，每次修改还会保存到该目录的 `history/`。用于生成上下文的模板、约束和历史案例位于 `Doc/AI策划案管线/知识库/`，新增 Markdown 文件后重启工作台即可被检索。
 
-启动工作台后，点击顶部的“模型设置”即可配置生成模型。默认使用本地规则模型；选择“OpenAI 兼容接口”后可填写模型名称、接口地址、API Key、Temperature、最大输出 Token 和请求超时。配置会保存到 `.ai-planner/model-config.json`，保存后立即生效，API Key 不会通过读取配置接口返回。
+启动工作台后，点击顶部的“模型设置”可分别配置文本模型与图片模型。文本默认使用本地规则模型，也可接入 OpenAI 兼容的 Chat Completions 接口；图片模型默认关闭，启用后接入 OpenAI 兼容的 Images API。两类模型可以使用不同的地址、模型名称和 API Key。配置会保存到 `.ai-planner/model-config.json` 并立即生效，API Key 不会通过读取配置接口返回。图片工作台生成的结果保存在 `.ai-planner/images/`。
 
 ## API
 
 - `GET /api/health`：健康检查。
 - `GET/POST /api/config`：读取或保存模型配置；读取结果只返回 API Key 是否已配置。
+- `POST /api/images/generate`：根据运行记录和界面任务调用已配置的图片模型。
+- `GET /api/images/{filename}`：读取已保存的本地生成图片。
 - `GET /api/runs`：列出运行快照。
 - `GET /api/runs/{id}`：读取完整运行结果。
 - `POST /api/runs`：运行管线，body 为 `{ "request": "...", "answers": [] }`。
@@ -36,19 +38,19 @@ python -m ai_planner.cli serve
 
 - `ai_planner/models.py`：数据契约与可序列化模型。
 - `ai_planner/pipeline.py`：六阶段工作流和持久化边界。
-- `ai_planner/adapters.py`：本地 LLM、知识库、视觉任务和 Markdown 导出适配器；可以替换为真实服务。
+- `ai_planner/adapters.py`：本地 LLM、OpenAI 兼容文本/图片模型、知识库、视觉任务和 Markdown 导出适配器。
 - `ai_planner/storage.py`：JSON 快照存储与本地 Markdown 文档库。
 - `Doc/AI策划案管线/知识库/`：本地 Markdown 模板、约束和历史案例。
 - `ai_planner/server.py`：标准库 HTTP API。
 - `web/index.html`：无构建依赖的本地工作台。
 - `web/analytics.html`、`web/feedback.html`、`web/coding.html`、`web/planner-test-cases.html`：本地数据看板、反馈、Coding 案和测试用例页面。
 - `web/model-settings.html`：模型提供商、模型名称和推理参数配置页面。
-- `web/knowledge.html`、`web/design-document-knowledge.html`、`web/planner-image-studio.html`：知识库管理、知识问答和界面任务查看页面。
+- `web/knowledge.html`、`web/design-document-knowledge.html`、`web/planner-image-studio.html`：知识库管理、知识问答和图片生成工作台。
 - `Doc/AI策划案管线/设计大纲.md`：设计、阶段计划和主动迭代记录。
 
 ## 后续接入点
 
-实现 `LLMProvider`、`KnowledgeStore`、`DocumentExporter` 或 `LocalImageProvider` 的替代类即可接入真实模型、向量检索和生图服务。文档正文保持 Markdown 文件格式，后续可以在文档库之上增加 Git、SQLite 或对象存储索引；管线仍以 `WorkflowRun` 快照为边界。
+实现 `LLMProvider`、`ImageGenerationProvider`、`KnowledgeStore`、`DocumentExporter` 或 `LocalImageProvider` 的替代类即可接入其他模型、向量检索和文档服务。文档正文保持 Markdown 文件格式，后续可以在文档库之上增加 Git、SQLite 或对象存储索引；管线仍以 `WorkflowRun` 快照为边界。
 
 ## Git 提交规范
 

@@ -10,9 +10,11 @@ from .adapters import (
     DocumentExporter,
     LLMProvider,
     KnowledgeStore,
+    ImageGenerationProvider,
     LocalImageProvider,
     LocalKnowledgeStore,
     MarkdownExporter,
+    create_image_generation_provider,
     create_llm_provider,
 )
 from .config import ModelConfigStore, public_model_config
@@ -50,7 +52,10 @@ class PlannerPipeline:
         self.store = JsonRunStore(self.root)
         self.model_config_store = ModelConfigStore(self.root)
         self.model_config = self.model_config_store.load()
-        self.llm = llm or create_llm_provider(self.model_config)
+        self.llm = llm or create_llm_provider(self.model_config["text"])
+        self.image_generator: ImageGenerationProvider = create_image_generation_provider(self.model_config["image"])
+        self.images_dir = self.root / ".ai-planner" / "images"
+        self.images_dir.mkdir(parents=True, exist_ok=True)
         self.knowledge = knowledge or LocalKnowledgeStore(root=self.root / "Doc" / "AI策划案管线" / "知识库")
         self.exporter = exporter or MarkdownExporter()
         self.image_provider = image_provider or LocalImageProvider()
@@ -60,8 +65,49 @@ class PlannerPipeline:
 
     def update_model_config(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         self.model_config = self.model_config_store.save(payload)
-        self.llm = create_llm_provider(self.model_config)
+        self.llm = create_llm_provider(self.model_config["text"])
+        self.image_generator = create_image_generation_provider(self.model_config["image"])
         return self.get_model_config()
+
+    def generate_image(self, run_id: str, task_id: str, prompt: str = "") -> Dict[str, str]:
+        run = self.store.load(run_id)
+        task = next((item for item in run.visual_tasks if item.id == task_id), None)
+        if not task:
+            raise KeyError(f"visual task not found: {task_id}")
+        final_prompt = prompt.strip() or self._image_prompt(run, task)
+        if len(final_prompt) > 8000:
+            raise ValueError("图片提示词不能超过 8000 个字符")
+        image, mime_type, revised_prompt = self.image_generator.generate(final_prompt)
+        extension = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}[mime_type]
+        safe_task_id = re.sub(r"[^a-zA-Z0-9_-]", "", task.id)[:48] or "task"
+        filename = f"{run.id}-{safe_task_id}-{uuid.uuid4().hex[:8]}.{extension}"
+        (self.images_dir / filename).write_bytes(image)
+        result = {
+            "id": f"image-{uuid.uuid4().hex[:10]}",
+            "run_id": run.id,
+            "task_id": task.id,
+            "screen_name": task.screen_name,
+            "prompt": final_prompt,
+            "revised_prompt": revised_prompt,
+            "model": str(self.model_config["image"]["model"]),
+            "url": f"/api/images/{filename}",
+            "mime_type": mime_type,
+        }
+        run.generated_images.append(result)
+        task.status = "generated"
+        self.store.save(run)
+        return result
+
+    @staticmethod
+    def _image_prompt(run: WorkflowRun, task: Any) -> str:
+        title = run.document.title if run.document else run.request
+        components = "、".join(task.components)
+        copy = "、".join(task.copy)
+        return (
+            f"为游戏活动《{title}》设计{task.screen_name}的高保真 UI 效果图。"
+            f"用途：{task.purpose}。布局：{task.layout}。组件：{components}。"
+            f"界面文案：{copy}。状态：{task.state}。画面清晰，信息层级明确，适合游戏内实际落地。"
+        )
 
     def create_run(self, request: str, existing_document: Dict[str, Any] | None = None) -> WorkflowRun:
         run_id = f"run-{uuid.uuid4().hex[:10]}"

@@ -28,7 +28,18 @@ DEFAULT_IMAGE_CONFIG: Dict[str, Any] = {
 
 # These are the image sizes supported by the OpenAI-compatible image contract.
 # Keep the list shared by config validation and per-generation overrides.
-SUPPORTED_IMAGE_SIZES = frozenset({"1024x1024", "1536x1024", "1024x1536", "auto"})
+SUPPORTED_IMAGE_SIZES = frozenset({
+    "1792x768",  # 21:9
+    "1536x864",  # 16:9
+    "1536x1024",  # 3:2
+    "1365x1024",  # 4:3
+    "1024x1024",  # 1:1
+    "1024x1365",  # 3:4
+    "1024x1536",  # 2:3
+    "864x1536",  # 9:16
+    "768x1792",  # 9:21
+    "auto",
+})
 
 
 def _number(value: Any, field: str, minimum: float, maximum: float, integer: bool = False) -> Any:

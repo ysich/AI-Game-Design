@@ -57,6 +57,13 @@ class ImageResolutionTests(unittest.TestCase):
                 pipeline.generate_image(run.id, run.visual_tasks[0].id, size="1920x1080")
             self.assertEqual(provider.calls, [])
 
+    def test_screen_ratio_sizes_are_valid_configuration_values(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pipeline = PlannerPipeline(Path(directory))
+            for size in ("1792x768", "1536x864", "1365x1024", "1024x1365", "864x1536", "768x1792"):
+                config = pipeline.update_model_config({"image": {"size": size}})
+                self.assertEqual(config["image"]["size"], size)
+
     def test_provider_uses_per_request_size_over_default(self):
         provider = OpenAICompatibleImageGenerationProvider({
             "provider": "openai_compatible",

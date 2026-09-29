@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from ai_planner.adapters import LocalKnowledgeStore
-from ai_planner.models import Route, Stage, to_dict
+from ai_planner.models import Route, Stage, run_from_dict, to_dict
 from ai_planner.pipeline import PlannerPipeline
 
 
@@ -63,6 +63,26 @@ class PlannerPipelineTests(unittest.TestCase):
         run = self.pipeline.run("设计一个社区任务活动，要求有分享和奖励。")
         payload = json.dumps(to_dict(run), ensure_ascii=False)
         self.assertIn(run.id, payload)
+
+    def test_run_loader_preserves_context_source_url(self):
+        run = run_from_dict(
+            {
+                "id": "run-context-url",
+                "request": "读取历史快照",
+                "context": [
+                    {
+                        "id": "web:reference",
+                        "title": "联网参考",
+                        "content": "参考内容",
+                        "source": "web:bing",
+                        "priority": 50,
+                        "token_estimate": 2,
+                        "url": "https://example.com/reference",
+                    }
+                ],
+            }
+        )
+        self.assertEqual(run.context[0].url, "https://example.com/reference")
 
     def test_image_only_route_still_creates_visual_tasks(self):
         run = self.pipeline.run("只生成这个活动的主界面和结算界面")

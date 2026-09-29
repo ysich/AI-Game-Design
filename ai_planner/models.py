@@ -169,6 +169,21 @@ def document_from_dict(document: Dict[str, Any]) -> PlanningDocument:
     )
 
 
+def _context_segment(data: Dict[str, Any]) -> ContextSegment:
+    """Load context snapshots while tolerating fields added by newer versions."""
+    segment = ContextSegment(
+        id=data["id"],
+        title=data["title"],
+        content=data["content"],
+        source=data["source"],
+        priority=data.get("priority", 50),
+        token_estimate=data.get("token_estimate", 0),
+    )
+    if "url" in data:
+        segment.url = str(data.get("url") or "")
+    return segment
+
+
 def run_from_dict(data: Dict[str, Any]) -> WorkflowRun:
     route = data.get("route")
     route_obj = None
@@ -195,7 +210,7 @@ def run_from_dict(data: Dict[str, Any]) -> WorkflowRun:
         updated_at=data.get("updated_at", utc_now()),
         stage=Stage(data.get("stage", Stage.INTAKE.value)),
         route=route_obj,
-        context=[ContextSegment(**item) for item in data.get("context", [])],
+        context=[_context_segment(item) for item in data.get("context", [])],
         document=document_obj,
         findings=[
             CheckFinding(

@@ -11,6 +11,9 @@ from .models import to_dict
 from .pipeline import PlannerPipeline
 
 
+MAX_JSON_BODY_BYTES = 16 * 1024 * 1024
+
+
 class PlannerRequestHandler(BaseHTTPRequestHandler):
     pipeline: PlannerPipeline
     web_root: Path
@@ -31,6 +34,8 @@ class PlannerRequestHandler(BaseHTTPRequestHandler):
 
     def _json_body(self):
         length = int(self.headers.get("Content-Length", "0"))
+        if length > MAX_JSON_BODY_BYTES:
+            raise ValueError("请求体不能超过 16 MB")
         return json.loads(self.rfile.read(length) or b"{}")
 
     def _static_file(self, path: str) -> bool:
@@ -251,6 +256,9 @@ class PlannerRequestHandler(BaseHTTPRequestHandler):
                     task_id,
                     str(body.get("prompt", "")),
                     size=None if requested_size is None else str(requested_size),
+                    supplement_prompt=str(body.get("supplement_prompt", "")),
+                    reference_image=body.get("reference_image"),
+                    reference_image_name=str(body.get("reference_image_name", "")),
                 )
                 self._send(201, result)
                 return

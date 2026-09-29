@@ -49,7 +49,7 @@
           <div class="field"><label for="image-quality">图片质量</label><select id="image-quality"><option value="auto">自动</option><option value="low">低</option><option value="medium">中</option><option value="high">高</option><option value="standard">Standard（兼容）</option><option value="hd">HD（兼容）</option></select></div>
           <div class="field"><label for="image-timeout">请求超时（秒）</label><input id="image-timeout" type="number" min="5" max="600" step="5" /></div>
         </div>
-        <div class="provider-note">图片生成调用 <code>/images/generations</code>，要求接口支持返回 <code>b64_json</code>。结果保存在项目的 <code>.ai-planner/images/</code> 目录。</div>
+        <div class="provider-note">图片生成调用 <code>/images/generations</code>；带参考图时调用 <code>/images/edits</code>，要求接口支持返回 <code>b64_json</code>。结果保存在项目的 <code>.ai-planner/images/</code> 目录。</div>
       </div>
       <div class="config-pane" id="search-pane">
         <div class="pane-heading"><h2>联网参考</h2><p>在工作台检索外部案例；结果会显示原始链接，手动搜索不会修改本地文档。</p></div>

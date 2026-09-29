@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import re
 import uuid
@@ -33,6 +35,43 @@ from .models import (
     to_dict,
 )
 from .storage import JsonRunStore
+
+
+MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024
+REFERENCE_IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/webp"}
+
+
+def _decode_reference_image(value: str | None) -> tuple[bytes, str] | None:
+    if not value:
+        return None
+    if not isinstance(value, str) or not value.startswith("data:"):
+        raise ValueError("参考图必须是 PNG、JPEG 或 WebP 图片")
+    header, separator, encoded = value.partition(",")
+    if not separator or ";base64" not in header:
+        raise ValueError("参考图数据格式无效")
+    mime_type = header[5:].split(";", 1)[0].lower()
+    if mime_type not in REFERENCE_IMAGE_MIME_TYPES:
+        raise ValueError("参考图仅支持 PNG、JPEG 或 WebP 格式")
+    try:
+        image = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("参考图数据无法读取") from exc
+    if not image or len(image) > MAX_REFERENCE_IMAGE_BYTES:
+        raise ValueError("参考图大小必须在 1 B 到 10 MB 之间")
+    detected_mime = _detect_reference_image_mime(image)
+    if detected_mime != mime_type:
+        raise ValueError("参考图格式与文件内容不一致")
+    return image, mime_type
+
+
+def _detect_reference_image_mime(data: bytes) -> str:
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        return "image/webp"
+    raise ValueError("参考图不是受支持的 PNG、JPEG 或 WebP 图片")
 
 
 class PlannerPipeline:
@@ -89,21 +128,39 @@ class PlannerPipeline:
             raise ValueError("搜索结果数必须在 1 到 10 之间")
         return self.web_search.search(query, limit=selected_limit)
 
-    def generate_image(self, run_id: str, task_id: str, prompt: str = "", size: str | None = None) -> Dict[str, str]:
+    def generate_image(
+        self,
+        run_id: str,
+        task_id: str,
+        prompt: str = "",
+        size: str | None = None,
+        supplement_prompt: str = "",
+        reference_image: str | None = None,
+        reference_image_name: str = "",
+    ) -> Dict[str, str]:
         run = self.store.load(run_id)
         task = next((item for item in run.visual_tasks if item.id == task_id), None)
         if not task:
             raise KeyError(f"visual task not found: {task_id}")
-        final_prompt = prompt.strip() or self._image_prompt(run, task)
+        base_prompt = prompt.strip() or self._image_prompt(run, task)
+        supplement = str(supplement_prompt or "").strip()
+        final_prompt = base_prompt + (f"\n补充要求：{supplement}" if supplement else "")
         if len(final_prompt) > 8000:
             raise ValueError("图片提示词不能超过 8000 个字符")
+        reference = _decode_reference_image(reference_image)
         selected_size = str(size).strip() if size is not None else str(self.model_config["image"].get("size", "1024x1024"))
         if selected_size not in SUPPORTED_IMAGE_SIZES:
             raise ValueError("图片尺寸不受支持")
         if size is None:
-            image, mime_type, revised_prompt = self.image_generator.generate(final_prompt)
+            if reference:
+                image, mime_type, revised_prompt = self.image_generator.generate(final_prompt, reference_image=reference)
+            else:
+                image, mime_type, revised_prompt = self.image_generator.generate(final_prompt)
         else:
-            image, mime_type, revised_prompt = self.image_generator.generate(final_prompt, size=selected_size)
+            if reference:
+                image, mime_type, revised_prompt = self.image_generator.generate(final_prompt, size=selected_size, reference_image=reference)
+            else:
+                image, mime_type, revised_prompt = self.image_generator.generate(final_prompt, size=selected_size)
         extension = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}[mime_type]
         safe_task_id = re.sub(r"[^a-zA-Z0-9_-]", "", task.id)[:48] or "task"
         filename = f"{run.id}-{safe_task_id}-{uuid.uuid4().hex[:8]}.{extension}"
@@ -114,12 +171,20 @@ class PlannerPipeline:
             "task_id": task.id,
             "screen_name": task.screen_name,
             "prompt": final_prompt,
+            "base_prompt": base_prompt,
+            "supplement_prompt": supplement,
             "revised_prompt": revised_prompt,
             "model": str(self.model_config["image"]["model"]),
             "size": selected_size,
             "url": f"/api/images/{filename}",
             "mime_type": mime_type,
         }
+        if reference:
+            reference_extension = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}[reference[1]]
+            reference_filename = f"{run.id}-{safe_task_id}-reference-{uuid.uuid4().hex[:8]}.{reference_extension}"
+            (self.images_dir / reference_filename).write_bytes(reference[0])
+            result["reference_image_url"] = f"/api/images/{reference_filename}"
+            result["reference_image_name"] = str(reference_image_name or "参考图")[:160]
         run.generated_images.append(result)
         task.status = "generated"
         self.store.save(run)

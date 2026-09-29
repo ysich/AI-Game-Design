@@ -5,6 +5,7 @@ from html import unescape
 from html.parser import HTMLParser
 import json
 import re
+import uuid
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -50,7 +51,12 @@ class DocumentExporter(Protocol):
 
 
 class ImageGenerationProvider(Protocol):
-    def generate(self, prompt: str, size: str | None = None) -> tuple[bytes, str, str]: ...
+    def generate(
+        self,
+        prompt: str,
+        size: str | None = None,
+        reference_image: tuple[bytes, str] | None = None,
+    ) -> tuple[bytes, str, str]: ...
 
 
 @dataclass
@@ -569,7 +575,12 @@ def create_llm_provider(config: Dict[str, object]) -> LLMProvider:
 
 
 class DisabledImageGenerationProvider:
-    def generate(self, prompt: str, size: str | None = None) -> tuple[bytes, str, str]:
+    def generate(
+        self,
+        prompt: str,
+        size: str | None = None,
+        reference_image: tuple[bytes, str] | None = None,
+    ) -> tuple[bytes, str, str]:
         raise ValueError("图片模型尚未启用，请先在模型设置中配置")
 
 
@@ -583,7 +594,17 @@ class OpenAICompatibleImageGenerationProvider:
         self.api_key = str(config.get("api_key", ""))
         self.timeout = int(config.get("timeout_seconds", 120))
 
-    def generate(self, prompt: str, size: str | None = None) -> tuple[bytes, str, str]:
+    def generate(
+        self,
+        prompt: str,
+        size: str | None = None,
+        reference_image: tuple[bytes, str] | None = None,
+    ) -> tuple[bytes, str, str]:
+        if reference_image:
+            return self._generate_edit(prompt, size, reference_image)
+        return self._generate_creation(prompt, size)
+
+    def _generate_creation(self, prompt: str, size: str | None = None) -> tuple[bytes, str, str]:
         url = self.base_url if self.base_url.endswith("/images/generations") else self.base_url + "/images/generations"
         payload = {
             "model": self.model,
@@ -605,9 +626,41 @@ class OpenAICompatibleImageGenerationProvider:
             headers=headers,
             method="POST",
         )
+        result = self._request_json(request)
+        return self._parse_image_result(result)
+
+    def _generate_edit(
+        self,
+        prompt: str,
+        size: str | None,
+        reference_image: tuple[bytes, str],
+    ) -> tuple[bytes, str, str]:
+        image_data, mime_type = reference_image
+        extension = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}.get(mime_type)
+        if not extension:
+            raise ValueError("参考图仅支持 PNG、JPEG 或 WebP 格式")
+        boundary = "----AIPlanner" + uuid.uuid4().hex
+        fields = {
+            "model": self.model,
+            "prompt": prompt,
+            "size": size or self.config.get("size", "1024x1024"),
+            "quality": self.config.get("quality", "auto"),
+            "n": 1,
+        }
+        if not self.model.lower().startswith("gpt-image"):
+            fields["response_format"] = "b64_json"
+        body = _multipart_form_data(fields, "image", f"reference.{extension}", image_data, mime_type, boundary)
+        url = self.base_url if self.base_url.endswith("/images/edits") else self.base_url + "/images/edits"
+        headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        request = urllib.request.Request(url, data=body, headers=headers, method="POST")
+        return self._parse_image_result(self._request_json(request))
+
+    def _request_json(self, request: urllib.request.Request) -> Dict[str, object]:
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                result = json.loads(response.read().decode("utf-8"))
+                return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")[:500]
             raise RuntimeError(f"图片模型接口返回 HTTP {exc.code}: {detail}") from exc
@@ -615,6 +668,9 @@ class OpenAICompatibleImageGenerationProvider:
             raise RuntimeError(f"图片模型接口连接失败：{exc.reason}") from exc
         except (OSError, json.JSONDecodeError) as exc:
             raise RuntimeError(f"图片模型接口请求失败：{exc}") from exc
+
+    @staticmethod
+    def _parse_image_result(result: Dict[str, object]) -> tuple[bytes, str, str]:
         try:
             item = result["data"][0]
             encoded = item["b64_json"]
@@ -625,6 +681,29 @@ class OpenAICompatibleImageGenerationProvider:
             raise RuntimeError("图片模型返回了空图片或超过 25 MB 的图片")
         mime_type = _detect_image_mime(image)
         return image, mime_type, str(item.get("revised_prompt", ""))
+
+
+def _multipart_form_data(
+    fields: Dict[str, object],
+    file_field: str,
+    filename: str,
+    file_data: bytes,
+    mime_type: str,
+    boundary: str,
+) -> bytes:
+    chunks: List[bytes] = []
+    for name, value in fields.items():
+        chunks.append(
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n".encode("utf-8")
+        )
+    chunks.append(
+        f"--{boundary}\r\nContent-Disposition: form-data; name=\"{file_field}\"; filename=\"{filename}\"\r\n"
+        f"Content-Type: {mime_type}\r\n\r\n".encode("utf-8")
+        + file_data
+        + b"\r\n"
+    )
+    chunks.append(f"--{boundary}--\r\n".encode("ascii"))
+    return b"".join(chunks)
 
 
 def _detect_image_mime(data: bytes) -> str:

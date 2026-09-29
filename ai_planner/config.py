@@ -26,6 +26,10 @@ DEFAULT_IMAGE_CONFIG: Dict[str, Any] = {
     "timeout_seconds": 120,
 }
 
+# These are the image sizes supported by the OpenAI-compatible image contract.
+# Keep the list shared by config validation and per-generation overrides.
+SUPPORTED_IMAGE_SIZES = frozenset({"1024x1024", "1536x1024", "1024x1536", "auto"})
+
 
 def _number(value: Any, field: str, minimum: float, maximum: float, integer: bool = False) -> Any:
     try:
@@ -78,7 +82,7 @@ def _image_config(payload: Dict[str, Any], current: Dict[str, Any]) -> Dict[str,
     if not model or len(model) > 120:
         raise ValueError("图片模型名称不能为空且不能超过 120 个字符")
     size = str(source.get("size", "1024x1024")).strip()
-    if size not in {"1024x1024", "1536x1024", "1024x1536", "auto"}:
+    if size not in SUPPORTED_IMAGE_SIZES:
         raise ValueError("图片尺寸不受支持")
     quality = str(source.get("quality", "auto")).strip()
     if quality not in {"auto", "low", "medium", "high", "standard", "hd"}:

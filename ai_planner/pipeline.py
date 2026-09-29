@@ -17,7 +17,7 @@ from .adapters import (
     create_image_generation_provider,
     create_llm_provider,
 )
-from .config import ModelConfigStore, public_model_config
+from .config import ModelConfigStore, SUPPORTED_IMAGE_SIZES, public_model_config
 from .models import (
     CheckFinding,
     ContextSegment,
@@ -69,7 +69,7 @@ class PlannerPipeline:
         self.image_generator = create_image_generation_provider(self.model_config["image"])
         return self.get_model_config()
 
-    def generate_image(self, run_id: str, task_id: str, prompt: str = "") -> Dict[str, str]:
+    def generate_image(self, run_id: str, task_id: str, prompt: str = "", size: str | None = None) -> Dict[str, str]:
         run = self.store.load(run_id)
         task = next((item for item in run.visual_tasks if item.id == task_id), None)
         if not task:
@@ -77,7 +77,13 @@ class PlannerPipeline:
         final_prompt = prompt.strip() or self._image_prompt(run, task)
         if len(final_prompt) > 8000:
             raise ValueError("图片提示词不能超过 8000 个字符")
-        image, mime_type, revised_prompt = self.image_generator.generate(final_prompt)
+        selected_size = str(size).strip() if size is not None else str(self.model_config["image"].get("size", "1024x1024"))
+        if selected_size not in SUPPORTED_IMAGE_SIZES:
+            raise ValueError("图片尺寸不受支持")
+        if size is None:
+            image, mime_type, revised_prompt = self.image_generator.generate(final_prompt)
+        else:
+            image, mime_type, revised_prompt = self.image_generator.generate(final_prompt, size=selected_size)
         extension = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}[mime_type]
         safe_task_id = re.sub(r"[^a-zA-Z0-9_-]", "", task.id)[:48] or "task"
         filename = f"{run.id}-{safe_task_id}-{uuid.uuid4().hex[:8]}.{extension}"
@@ -90,6 +96,7 @@ class PlannerPipeline:
             "prompt": final_prompt,
             "revised_prompt": revised_prompt,
             "model": str(self.model_config["image"]["model"]),
+            "size": selected_size,
             "url": f"/api/images/{filename}",
             "mime_type": mime_type,
         }

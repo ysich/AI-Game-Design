@@ -207,7 +207,13 @@ class PlannerRequestHandler(BaseHTTPRequestHandler):
                 task_id = str(body.get("task_id", "")).strip()
                 if not run_id or not task_id:
                     raise ValueError("run_id 和 task_id 不能为空")
-                result = self.pipeline.generate_image(run_id, task_id, str(body.get("prompt", "")))
+                requested_size = body.get("size")
+                result = self.pipeline.generate_image(
+                    run_id,
+                    task_id,
+                    str(body.get("prompt", "")),
+                    size=None if requested_size is None else str(requested_size),
+                )
                 self._send(201, result)
                 return
             if path == "/api/runs":

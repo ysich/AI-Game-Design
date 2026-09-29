@@ -42,7 +42,7 @@ class DocumentExporter(Protocol):
 
 
 class ImageGenerationProvider(Protocol):
-    def generate(self, prompt: str) -> tuple[bytes, str, str]: ...
+    def generate(self, prompt: str, size: str | None = None) -> tuple[bytes, str, str]: ...
 
 
 @dataclass
@@ -312,7 +312,7 @@ def create_llm_provider(config: Dict[str, object]) -> LLMProvider:
 
 
 class DisabledImageGenerationProvider:
-    def generate(self, prompt: str) -> tuple[bytes, str, str]:
+    def generate(self, prompt: str, size: str | None = None) -> tuple[bytes, str, str]:
         raise ValueError("图片模型尚未启用，请先在模型设置中配置")
 
 
@@ -326,12 +326,12 @@ class OpenAICompatibleImageGenerationProvider:
         self.api_key = str(config.get("api_key", ""))
         self.timeout = int(config.get("timeout_seconds", 120))
 
-    def generate(self, prompt: str) -> tuple[bytes, str, str]:
+    def generate(self, prompt: str, size: str | None = None) -> tuple[bytes, str, str]:
         url = self.base_url if self.base_url.endswith("/images/generations") else self.base_url + "/images/generations"
         payload = {
             "model": self.model,
             "prompt": prompt,
-            "size": self.config.get("size", "1024x1024"),
+            "size": size or self.config.get("size", "1024x1024"),
             "quality": self.config.get("quality", "auto"),
             "n": 1,
         }

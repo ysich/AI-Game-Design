@@ -28,6 +28,8 @@ python -m ai_planner.cli serve
 - `GET /api/documents`：列出本地 Markdown 文档库中的策划案。
 - `GET /api/documents?q=签到`：检索本地文档标题和正文。
 - `GET /api/documents/{id}?version=2`：读取文档当前版本或指定历史版本。
+- `PUT /api/documents/{id}`：编辑 Markdown 正文与元数据，并保存为新的历史版本。
+- `PUT /api/runs/{id}`：校验并更新本地 JSON 运行快照。
 - `GET /api/analytics`：读取本地运行、导出、检查和界面任务统计。
 - `POST /api/coding`：根据 `run_id` 生成研发用 Coding 案。
 - `POST /api/test-cases/run`：批量运行本地 Planner 测试输入。
@@ -42,6 +44,7 @@ python -m ai_planner.cli serve
 - `Doc/AI策划案管线/知识库/`：本地 Markdown 模板、约束和历史案例。
 - `ai_planner/server.py`：标准库 HTTP API。
 - `web/index.html`：无构建依赖的本地工作台。
+- `web/data-manager.html`：本地 Markdown 文档与 JSON 运行数据库编辑器。
 - `web/analytics.html`、`web/coding.html`、`web/planner-test-cases.html`：本地数据看板、Coding 案和测试用例页面。
 - `web/model-settings.html`：模型提供商、模型名称和推理参数配置页面。
 - `web/knowledge.html`、`web/design-document-knowledge.html`、`web/planner-image-studio.html`：知识库管理、知识问答和图片生成工作台。

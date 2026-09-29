@@ -5,7 +5,7 @@ import mimetypes
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from .models import to_dict
 from .pipeline import PlannerPipeline
@@ -94,7 +94,7 @@ class PlannerRequestHandler(BaseHTTPRequestHandler):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
         self.end_headers()
 
     def do_GET(self):  # noqa: N802
@@ -145,19 +145,53 @@ class PlannerRequestHandler(BaseHTTPRequestHandler):
                 self._send(200, documents)
                 return
             if path.startswith("/api/documents/"):
-                document_id = path.split("/", 3)[3]
+                document_id = unquote(path.split("/", 3)[3])
                 version_value = query.get("version", [None])[0]
                 version = int(version_value) if version_value else None
                 self._send(200, self.pipeline.store.document_library.get(document_id, version=version))
                 return
             if path.startswith("/api/runs/"):
-                run_id = path.split("/", 3)[3]
+                run_id = unquote(path.split("/", 3)[3])
                 run = self.pipeline.store.load(run_id)
                 self._send(200, to_dict(run))
                 return
             self._send(404, {"error": "not found"})
         except KeyError as exc:
             self._send(404, {"error": str(exc)})
+        except Exception as exc:
+            self._send(500, {"error": f"{type(exc).__name__}: {exc}"})
+
+    def do_PUT(self):  # noqa: N802
+        path = urlparse(self.path).path
+        try:
+            body = self._json_body()
+            if path.startswith("/api/documents/"):
+                document_id = unquote(path.split("/", 3)[3])
+                expected_version = body.get("expected_version")
+                if expected_version is not None:
+                    expected_version = int(expected_version)
+                document = self.pipeline.store.document_library.update(
+                    document_id,
+                    title=str(body.get("title", "")),
+                    activity_type=str(body.get("activity_type", "")),
+                    content=str(body.get("content", "")),
+                    expected_version=expected_version,
+                )
+                self._send(200, document)
+                return
+            if path.startswith("/api/runs/"):
+                run_id = unquote(path.split("/", 3)[3])
+                record = body.get("record")
+                if not isinstance(record, dict):
+                    raise ValueError("record 必须是 JSON 对象")
+                run = self.pipeline.store.update(run_id, record, str(body.get("expected_updated_at", "")))
+                self._send(200, to_dict(run))
+                return
+            self._send(404, {"error": "not found"})
+        except KeyError as exc:
+            self._send(404, {"error": str(exc)})
+        except ValueError as exc:
+            self._send(400, {"error": str(exc)})
         except Exception as exc:
             self._send(500, {"error": f"{type(exc).__name__}: {exc}"})
 

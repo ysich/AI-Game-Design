@@ -39,6 +39,19 @@ class MarkdownDocumentLibrary:
         temp.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
         temp.replace(self.index_path)
 
+    def _record(self, document_id: str) -> Dict[str, Any]:
+        record = next((item for item in self._read_index() if item.get("id") == document_id), None)
+        if not record:
+            raise KeyError(f"document not found: {document_id}")
+        return record
+
+    def _path(self, relative_path: str) -> Path:
+        candidate = (self.root / relative_path).resolve()
+        root = self.root.resolve()
+        if root not in candidate.parents:
+            raise ValueError("document path is outside the local library")
+        return candidate
+
     def publish(self, document: PlanningDocument, markdown: str, run_id: str = "") -> Dict[str, Any]:
         """Write the latest document and an immutable version copy, then update the index."""
         doc_id = _safe_filename(document.id, "document")
@@ -82,22 +95,73 @@ class MarkdownDocumentLibrary:
         return self._read_index()
 
     def get(self, document_id: str, version: Optional[int] = None) -> Dict[str, Any]:
-        record = next((item for item in self._read_index() if item.get("id") == document_id), None)
-        if not record:
-            raise KeyError(f"document not found: {document_id}")
+        record = self._record(document_id)
         relative_path = record["path"]
         if version is not None:
             version_item = next((item for item in record.get("versions", []) if item.get("version") == version), None)
             if not version_item:
                 raise KeyError(f"document version not found: {document_id}/v{version}")
             relative_path = version_item["path"]
-        path = self.root / relative_path
+        path = self._path(relative_path)
         if not path.exists():
             raise KeyError(f"document file not found: {relative_path}")
         result = dict(record)
         result["requested_version"] = version or record.get("version")
         result["content"] = path.read_text(encoding="utf-8")
         return result
+
+    def update(
+        self,
+        document_id: str,
+        *,
+        title: str,
+        activity_type: str,
+        content: str,
+        expected_version: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Save an edited document as a new immutable library version."""
+        title = title.strip()
+        activity_type = activity_type.strip()
+        if not title:
+            raise ValueError("文档标题不能为空")
+        if not activity_type:
+            raise ValueError("活动类型不能为空")
+        if not content.strip():
+            raise ValueError("文档正文不能为空")
+        if len(content.encode("utf-8")) > 2 * 1024 * 1024:
+            raise ValueError("文档正文不能超过 2 MB")
+
+        records = self._read_index()
+        record = next((item for item in records if item.get("id") == document_id), None)
+        if not record:
+            raise KeyError(f"document not found: {document_id}")
+        current_version = int(record.get("version", 0))
+        if expected_version is not None and expected_version != current_version:
+            raise ValueError(f"文档已更新到 v{current_version}，请刷新后重试")
+
+        version = current_version + 1
+        now = _now()
+        latest_path = self._path(str(record["path"]))
+        history_doc_dir = self.history_dir / _safe_filename(document_id, "document")
+        history_doc_dir.mkdir(parents=True, exist_ok=True)
+        version_path = history_doc_dir / f"v{version}.md"
+        for path in (latest_path, version_path):
+            temp = path.with_suffix(path.suffix + ".tmp")
+            temp.write_text(content, encoding="utf-8")
+            temp.replace(path)
+
+        record.update({
+            "title": title,
+            "activity_type": activity_type,
+            "version": version,
+            "updated_at": now,
+            "content_chars": len(content),
+        })
+        versions = [item for item in record.get("versions", []) if item.get("version") != version]
+        versions.append({"version": version, "path": str(version_path.relative_to(self.root)), "updated_at": now})
+        record["versions"] = sorted(versions, key=lambda item: item["version"])
+        self._write_index(sorted(records, key=lambda item: item.get("updated_at", ""), reverse=True))
+        return self.get(document_id)
 
     def search(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
         words = [word.lower() for word in re.findall(r"[\w\u4e00-\u9fff]+", query) if len(word) > 1]
@@ -146,6 +210,23 @@ class JsonRunStore:
         if not path.exists():
             raise KeyError(f"workflow run not found: {run_id}")
         return run_from_dict(json.loads(path.read_text(encoding="utf-8")))
+
+    def update(self, run_id: str, payload: Dict[str, Any], expected_updated_at: str = "") -> WorkflowRun:
+        """Validate and replace one local run snapshot while keeping its ID stable."""
+        current = self.load(run_id)
+        if expected_updated_at and current.updated_at != expected_updated_at:
+            raise ValueError("运行记录已被其他操作更新，请刷新后重试")
+        if not isinstance(payload, dict):
+            raise ValueError("运行记录必须是 JSON 对象")
+        if payload.get("id") != run_id:
+            raise ValueError("运行记录 ID 不允许修改")
+        if len(json.dumps(payload, ensure_ascii=False).encode("utf-8")) > 4 * 1024 * 1024:
+            raise ValueError("运行记录不能超过 4 MB")
+        try:
+            run = run_from_dict(payload)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"运行记录结构无效：{exc}") from exc
+        return self.save(run)
 
     def list(self) -> List[WorkflowRun]:
         items = [run_from_dict(json.loads(path.read_text(encoding="utf-8"))) for path in self.runs_dir.glob("*.json")]

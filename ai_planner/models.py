@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Type, TypeVar
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds")
 
 
 class Route(str, Enum):

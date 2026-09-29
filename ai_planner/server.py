@@ -94,7 +94,7 @@ class PlannerRequestHandler(BaseHTTPRequestHandler):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
         self.end_headers()
 
     def do_GET(self):  # noqa: N802
@@ -186,6 +186,30 @@ class PlannerRequestHandler(BaseHTTPRequestHandler):
                     raise ValueError("record 必须是 JSON 对象")
                 run = self.pipeline.store.update(run_id, record, str(body.get("expected_updated_at", "")))
                 self._send(200, to_dict(run))
+                return
+            self._send(404, {"error": "not found"})
+        except KeyError as exc:
+            self._send(404, {"error": str(exc)})
+        except ValueError as exc:
+            self._send(400, {"error": str(exc)})
+        except Exception as exc:
+            self._send(500, {"error": f"{type(exc).__name__}: {exc}"})
+
+    def do_DELETE(self):  # noqa: N802
+        parsed = urlparse(self.path)
+        path = parsed.path
+        query = parse_qs(parsed.query)
+        try:
+            if path.startswith("/api/documents/"):
+                document_id = unquote(path.split("/", 3)[3])
+                version_value = query.get("expected_version", [None])[0]
+                expected_version = int(version_value) if version_value is not None else None
+                self._send(200, self.pipeline.store.document_library.delete(document_id, expected_version))
+                return
+            if path.startswith("/api/runs/"):
+                run_id = unquote(path.split("/", 3)[3])
+                expected_updated_at = query.get("expected_updated_at", [""])[0]
+                self._send(200, self.pipeline.store.delete(run_id, expected_updated_at))
                 return
             self._send(404, {"error": "not found"})
         except KeyError as exc:

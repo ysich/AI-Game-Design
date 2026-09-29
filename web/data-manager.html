@@ -25,6 +25,7 @@
     .editor textarea.json{min-height:535px}
     .editor-empty{min-height:610px;display:grid;place-items:center;color:var(--quiet);font-size:12px}
     .save-state{color:var(--muted);font-size:11px}.save-state.error{color:var(--error)}.save-state.success{color:#168443}
+    .button.danger{color:#b42318;border-color:#f2c7c4;background:#fff}.button.danger:hover{color:#8f1d14;border-color:#e8aaa5;background:#fff5f4}
     .record-count{margin-top:7px;color:var(--quiet);font-size:10px}
     @media(max-width:800px){.editor-layout{grid-template-columns:1fr}.record-sidebar{border-right:0;border-bottom:1px solid var(--line)}.record-list{max-height:210px}.editor-meta{grid-template-columns:1fr}.editor-header{align-items:flex-start;flex-direction:column}.editor{padding:16px}.editor textarea,.editor textarea.json{min-height:420px}}
   </style>
@@ -90,10 +91,10 @@
       if(!version||!selectedDocument||selectedDocument.id!==id)selectedDocument=await request('/api/documents/'+encodeURIComponent(id));
       dirty=false;setActive('#document-list [data-id]',id);
       const options=(selectedDocument.versions||[]).slice().reverse().map(item=>'<option value="'+item.version+'" '+(Number(current.requested_version)===Number(item.version)?'selected':'')+'>v'+item.version+' · '+esc(item.updated_at)+'</option>').join('');
-      $('#document-editor').innerHTML='<div class="editor-header"><div><h2>'+esc(selectedDocument.title)+'</h2><div class="save-state">已加载 v'+esc(current.requested_version)+'</div></div><div class="editor-actions"><button class="primary" id="save-document">保存新版本</button></div></div><div class="editor-meta"><div class="field"><label for="document-title">标题</label><input id="document-title" value="'+esc(selectedDocument.title)+'"></div><div class="field"><label for="document-type">活动类型</label><input id="document-type" value="'+esc(selectedDocument.activity_type)+'"></div><div class="field"><label for="document-version">历史版本</label><select id="document-version">'+options+'</select></div></div><div class="field"><label for="document-content">Markdown 正文</label><textarea id="document-content">'+esc(current.content)+'</textarea></div>';
+      $('#document-editor').innerHTML='<div class="editor-header"><div><h2>'+esc(selectedDocument.title)+'</h2><div class="save-state">已加载 v'+esc(current.requested_version)+'</div></div><div class="editor-actions"><button class="button danger" id="delete-document">移到回收站</button><button class="primary" id="save-document">保存新版本</button></div></div><div class="editor-meta"><div class="field"><label for="document-title">标题</label><input id="document-title" value="'+esc(selectedDocument.title)+'"></div><div class="field"><label for="document-type">活动类型</label><input id="document-type" value="'+esc(selectedDocument.activity_type)+'"></div><div class="field"><label for="document-version">历史版本</label><select id="document-version">'+options+'</select></div></div><div class="field"><label for="document-content">Markdown 正文</label><textarea id="document-content">'+esc(current.content)+'</textarea></div>';
       ['#document-title','#document-type','#document-content'].forEach(selector=>$(selector).oninput=markDirty);
       $('#document-version').onchange=()=>openDocument(id,Number($('#document-version').value));
-      $('#save-document').onclick=saveDocument;
+      $('#save-document').onclick=saveDocument;$('#delete-document').onclick=deleteDocument;
     }
     async function saveDocument(){
       const button=$('#save-document');button.disabled=true;setState('保存中');
@@ -101,6 +102,14 @@
         selectedDocument=await request('/api/documents/'+encodeURIComponent(selectedDocument.id),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:$('#document-title').value,activity_type:$('#document-type').value,content:$('#document-content').value,expected_version:selectedDocument.version})});
         dirty=false;await loadDocuments();await openDocument(selectedDocument.id);setState('已保存 v'+selectedDocument.version,'success');
       }catch(error){setState(error.message,'error')}finally{button.disabled=false}
+    }
+    async function deleteDocument(){
+      if(!confirm('将文档“'+selectedDocument.title+'”及全部历史版本移到本地回收站？'))return;
+      const id=selectedDocument.id;const version=selectedDocument.version;
+      try{
+        const result=await request('/api/documents/'+encodeURIComponent(id)+'?expected_version='+version,{method:'DELETE'});
+        selectedDocument=null;dirty=false;$('#document-editor').innerHTML='<div class="editor-empty">文档已移到 '+esc(result.trash_path)+'</div>';await loadDocuments();setState('已移到回收站：'+result.trash_path,'success');
+      }catch(error){setState(error.message,'error')}
     }
 
     function renderRunList(){
@@ -114,8 +123,8 @@
     async function openRun(id){
       if(!mayDiscard())return;
       selectedRun=await request('/api/runs/'+encodeURIComponent(id));dirty=false;setActive('#run-list [data-id]',id);
-      $('#run-editor').innerHTML='<div class="editor-header"><div><h2>'+esc(selectedRun.id)+'</h2><div class="save-state">'+esc(selectedRun.updated_at)+'</div></div><div class="editor-actions"><button class="button" id="format-json">格式化</button><button class="primary" id="save-run">保存记录</button></div></div><div class="field"><label for="run-json">JSON 记录</label><textarea class="json" id="run-json" spellcheck="false">'+esc(JSON.stringify(selectedRun,null,2))+'</textarea></div>';
-      $('#run-json').oninput=markDirty;$('#format-json').onclick=formatJson;$('#save-run').onclick=saveRun;
+      $('#run-editor').innerHTML='<div class="editor-header"><div><h2>'+esc(selectedRun.id)+'</h2><div class="save-state">'+esc(selectedRun.updated_at)+'</div></div><div class="editor-actions"><button class="button danger" id="delete-run">移到回收站</button><button class="button" id="format-json">格式化</button><button class="primary" id="save-run">保存记录</button></div></div><div class="field"><label for="run-json">JSON 记录</label><textarea class="json" id="run-json" spellcheck="false">'+esc(JSON.stringify(selectedRun,null,2))+'</textarea></div>';
+      $('#run-json').oninput=markDirty;$('#format-json').onclick=formatJson;$('#save-run').onclick=saveRun;$('#delete-run').onclick=deleteRun;
     }
     function formatJson(){try{$('#run-json').value=JSON.stringify(JSON.parse($('#run-json').value),null,2);markDirty();setState('JSON 格式正确','success')}catch(error){setState('JSON 格式错误：'+error.message,'error')}}
     async function saveRun(){
@@ -125,6 +134,14 @@
         const updated=await request('/api/runs/'+encodeURIComponent(selectedRun.id),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({record,expected_updated_at:selectedRun.updated_at})});
         selectedRun=updated;dirty=false;await loadRuns();await openRun(updated.id);setState('记录已保存','success');
       }catch(error){setState(error.message,'error')}finally{button.disabled=false}
+    }
+    async function deleteRun(){
+      if(!confirm('将运行记录“'+selectedRun.id+'”移到本地回收站？'))return;
+      const id=selectedRun.id;const updatedAt=selectedRun.updated_at;
+      try{
+        const result=await request('/api/runs/'+encodeURIComponent(id)+'?expected_updated_at='+encodeURIComponent(updatedAt),{method:'DELETE'});
+        selectedRun=null;dirty=false;$('#run-editor').innerHTML='<div class="editor-empty">记录已移到 '+esc(result.trash_path)+'</div>';await loadRuns();setState('已移到回收站：'+result.trash_path,'success');
+      }catch(error){setState(error.message,'error')}
     }
 
     document.querySelectorAll('[data-tab]').forEach(button=>button.onclick=()=>{if(!mayDiscard())return;dirty=false;document.querySelectorAll('[data-tab]').forEach(item=>item.classList.toggle('active',item===button));document.querySelectorAll('.manager-pane').forEach(pane=>pane.classList.toggle('active',pane.id===button.dataset.tab+'-pane'))});

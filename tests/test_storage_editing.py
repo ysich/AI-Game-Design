@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from urllib.error import HTTPError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 from http.server import ThreadingHTTPServer
 
@@ -53,6 +54,17 @@ class MarkdownDocumentLibraryEditingTests(unittest.TestCase):
                 expected_version=0,
             )
 
+    def test_delete_moves_document_and_history_to_trash(self):
+        deleted = self.library.delete(self.document.id, expected_version=1)
+
+        self.assertEqual(self.library.list(), [])
+        with self.assertRaises(KeyError):
+            self.library.get(self.document.id)
+        trash_dir = self.library.root / deleted["trash_path"]
+        self.assertTrue((trash_dir / "manifest.json").is_file())
+        self.assertTrue((trash_dir / "history" / "v1.md").is_file())
+        self.assertTrue(any(path.suffix == ".md" for path in trash_dir.iterdir()))
+
 
 class JsonRunStoreEditingTests(unittest.TestCase):
     def setUp(self):
@@ -82,6 +94,13 @@ class JsonRunStoreEditingTests(unittest.TestCase):
         payload["stage"] = "unknown"
         with self.assertRaisesRegex(ValueError, "结构无效"):
             self.pipeline.store.update(self.run.id, payload)
+
+    def test_delete_moves_run_snapshot_to_trash(self):
+        deleted = self.pipeline.store.delete(self.run.id, self.run.updated_at)
+
+        with self.assertRaises(KeyError):
+            self.pipeline.store.load(self.run.id)
+        self.assertTrue((Path(self.temp_dir.name) / deleted["trash_path"]).is_file())
 
 
 class EditingApiTests(unittest.TestCase):
@@ -119,6 +138,14 @@ class EditingApiTests(unittest.TestCase):
         except HTTPError as exc:
             return exc.code, json.loads(exc.read().decode("utf-8"))
 
+    def delete(self, path):
+        request = Request(self.base_url + path, method="DELETE")
+        try:
+            with urlopen(request, timeout=5) as response:
+                return response.status, json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            return exc.code, json.loads(exc.read().decode("utf-8"))
+
     def test_put_updates_document_and_run_through_http_api(self):
         document_id = self.run.document.id
         status, document = self.put(
@@ -141,6 +168,16 @@ class EditingApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertEqual(updated_run["request"], "接口编辑后的需求")
+
+        status, deleted_document = self.delete(f"/api/documents/{document_id}?expected_version=2")
+        self.assertEqual(status, 200)
+        self.assertIn(".trash", deleted_document["trash_path"])
+
+        status, deleted_run = self.delete(
+            f"/api/runs/{self.run.id}?expected_updated_at={quote(updated_run['updated_at'])}"
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("trash", deleted_run["trash_path"])
 
 
 if __name__ == "__main__":

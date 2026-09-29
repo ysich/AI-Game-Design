@@ -18,6 +18,10 @@ def _safe_filename(value: str, fallback: str) -> str:
     return (cleaned or fallback)[:80]
 
 
+def _trash_stamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+
+
 class MarkdownDocumentLibrary:
     """A visible, local Markdown library with searchable metadata and history."""
 
@@ -163,6 +167,38 @@ class MarkdownDocumentLibrary:
         self._write_index(sorted(records, key=lambda item: item.get("updated_at", ""), reverse=True))
         return self.get(document_id)
 
+    def delete(self, document_id: str, expected_version: Optional[int] = None) -> Dict[str, Any]:
+        """Move a document and its version history to the local trash directory."""
+        records = self._read_index()
+        record = next((item for item in records if item.get("id") == document_id), None)
+        if not record:
+            raise KeyError(f"document not found: {document_id}")
+        current_version = int(record.get("version", 0))
+        if expected_version is not None and expected_version != current_version:
+            raise ValueError(f"文档已更新到 v{current_version}，请刷新后重试")
+
+        deleted_at = _now()
+        safe_id = _safe_filename(document_id, "document")
+        trash_dir = self.root / ".trash" / f"{safe_id}-{_trash_stamp()}"
+        trash_dir.mkdir(parents=True, exist_ok=False)
+        latest_path = self._path(str(record["path"]))
+        history_path = (self.history_dir / safe_id).resolve()
+        if self.root.resolve() not in history_path.parents:
+            raise ValueError("document history path is outside the local library")
+        if latest_path.is_file():
+            latest_path.replace(trash_dir / latest_path.name)
+        if history_path.is_dir():
+            history_path.replace(trash_dir / "history")
+        manifest = {"deleted_at": deleted_at, "record": record}
+        (trash_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        self._write_index([item for item in records if item.get("id") != document_id])
+        return {
+            "id": document_id,
+            "title": record.get("title", ""),
+            "deleted_at": deleted_at,
+            "trash_path": str(trash_dir.relative_to(self.root)),
+        }
+
     def search(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
         words = [word.lower() for word in re.findall(r"[\w\u4e00-\u9fff]+", query) if len(word) > 1]
         records = self._read_index()
@@ -227,6 +263,25 @@ class JsonRunStore:
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError(f"运行记录结构无效：{exc}") from exc
         return self.save(run)
+
+    def delete(self, run_id: str, expected_updated_at: str = "") -> Dict[str, str]:
+        """Move one run snapshot to the local trash directory."""
+        current = self.load(run_id)
+        if expected_updated_at and current.updated_at != expected_updated_at:
+            raise ValueError("运行记录已被其他操作更新，请刷新后重试")
+        source = self.path_for(run_id).resolve()
+        runs_root = self.runs_dir.resolve()
+        if runs_root not in source.parents:
+            raise ValueError("run path is outside the local database")
+        trash_dir = self.root / ".ai-planner" / "trash" / "runs"
+        trash_dir.mkdir(parents=True, exist_ok=True)
+        destination = trash_dir / f"{source.stem}-{_trash_stamp()}.json"
+        source.replace(destination)
+        return {
+            "id": run_id,
+            "deleted_at": _now(),
+            "trash_path": str(destination.relative_to(self.root)),
+        }
 
     def list(self) -> List[WorkflowRun]:
         items = [run_from_dict(json.loads(path.read_text(encoding="utf-8"))) for path in self.runs_dir.glob("*.json")]

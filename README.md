@@ -30,6 +30,8 @@ python -m ai_planner.cli serve
 - `GET /api/documents/{id}?version=2`：读取文档当前版本或指定历史版本。
 - `PUT /api/documents/{id}`：编辑 Markdown 正文与元数据，并保存为新的历史版本。
 - `PUT /api/runs/{id}`：校验并更新本地 JSON 运行快照。
+- `DELETE /api/documents/{id}`：将文档正文和历史版本移动到文档库回收目录。
+- `DELETE /api/runs/{id}`：将本地 JSON 运行快照移动到运行数据回收目录。
 - `GET /api/analytics`：读取本地运行、导出、检查和界面任务统计。
 - `POST /api/coding`：根据 `run_id` 生成研发用 Coding 案。
 - `POST /api/test-cases/run`：批量运行本地 Planner 测试输入。

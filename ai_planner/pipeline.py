@@ -19,9 +19,10 @@ from .adapters import (
     create_image_generation_provider,
     create_llm_provider,
     create_web_search_provider,
+    test_provider_connection,
     WebSearchProvider,
 )
-from .config import ModelConfigStore, SUPPORTED_IMAGE_SIZES, public_model_config
+from .config import ModelConfigStore, SUPPORTED_IMAGE_SIZES, normalize_model_config, public_model_config
 from .models import (
     CheckFinding,
     ContextSegment,
@@ -119,6 +120,20 @@ class PlannerPipeline:
         self.image_generator = create_image_generation_provider(self.model_config["image"])
         self.web_search = create_web_search_provider(self.model_config["search"])
         return self.get_model_config()
+
+    def test_model_config(self, kind: str, payload: Dict[str, Any]) -> Dict[str, object]:
+        kind = str(kind).strip()
+        if kind not in {"text", "image", "search"}:
+            raise ValueError("测试类型只能是 text、image 或 search")
+        if not isinstance(payload, dict):
+            raise ValueError("测试配置必须是 JSON 对象")
+        section = dict(payload)
+        if section.pop("clear_api_key", False):
+            section["api_key"] = ""
+        elif not str(section.get("api_key", "")):
+            section["api_key"] = self.model_config[kind].get("api_key", "")
+        candidate = normalize_model_config({kind: section}, current=self.model_config)[kind]
+        return test_provider_connection(kind, candidate)
 
     def search_references(self, query: str, limit: int | None = None) -> List[ContextSegment]:
         query = str(query).strip()

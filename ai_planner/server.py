@@ -286,6 +286,14 @@ class PlannerRequestHandler(BaseHTTPRequestHandler):
                 self._send(201, {"items": items, "count": len(items)})
                 return
             body = self._json_body()
+            if path == "/api/config/test":
+                try:
+                    result = self.pipeline.test_model_config(str(body.get("kind", "")), body.get("config"))
+                except RuntimeError as exc:
+                    self._send(502, {"ok": False, "error": str(exc)})
+                    return
+                self._send(200, result)
+                return
             if path == "/api/config":
                 self._send(200, self.pipeline.update_model_config(body))
                 return

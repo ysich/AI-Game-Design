@@ -207,7 +207,7 @@ class ModelConfigStore:
     def save(self, payload: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         current = self.load()
         incoming = _as_nested(payload)
-        for kind in ("text", "image"):
+        for kind in ("text", "image", "search"):
             section = incoming[kind]
             if not str(section.get("api_key", "")):
                 section["api_key"] = current[kind].get("api_key", "")

@@ -38,6 +38,7 @@ python -m ai_planner.cli coding <run_id> --output coding-case.md
 
 - `GET /api/health`：健康检查。
 - `GET/POST /api/config`：读取或保存模型配置；读取结果只返回 API Key 是否已配置。
+- `POST /api/config/test`：使用未保存的表单参数测试文本模型、图片模型或联网参考，不会改写配置；图片模型测试只查询模型接口，不生成图片。
 - `POST /api/images/generate`：根据运行记录和界面任务调用已配置的图片模型，统一使用图片模型设置中的屏幕比例与分辨率；可附带 `supplement_prompt` 和 Base64 `reference_image`（PNG/JPEG/WebP，最大 10 MB）调用图片编辑接口。
 - `GET /api/images/{filename}`：读取已保存的本地生成图片。
 - `GET /api/runs`：列出运行快照。

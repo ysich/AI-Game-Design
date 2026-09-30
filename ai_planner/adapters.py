@@ -5,6 +5,7 @@ from html import unescape
 from html.parser import HTMLParser
 import json
 import re
+import time
 import uuid
 import urllib.error
 import urllib.request
@@ -12,7 +13,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Protocol, Sequence
-from urllib.parse import parse_qs, quote_plus, unquote, urlencode, urlsplit
+from urllib.parse import parse_qs, quote, quote_plus, unquote, urlencode, urlsplit
 
 from .models import (
     Chapter,
@@ -476,7 +477,7 @@ class OpenAICompatibleLLMProvider:
             detail = exc.read().decode("utf-8", errors="replace")[:500]
             raise RuntimeError(f"模型接口返回 HTTP {exc.code}: {detail}") from exc
         except urllib.error.URLError as exc:
-            raise RuntimeError(f"模型接口连接失败：{exc.reason}") from exc
+            raise _connection_error("模型接口", exc) from exc
         except (OSError, json.JSONDecodeError) as exc:
             raise RuntimeError(f"模型接口请求失败：{exc}") from exc
         try:
@@ -675,7 +676,7 @@ class OpenAICompatibleImageGenerationProvider:
             detail = exc.read().decode("utf-8", errors="replace")[:500]
             raise RuntimeError(f"图片模型接口返回 HTTP {exc.code}: {detail}") from exc
         except urllib.error.URLError as exc:
-            raise RuntimeError(f"图片模型接口连接失败：{exc.reason}") from exc
+            raise _connection_error("图片模型接口", exc) from exc
         except (OSError, json.JSONDecodeError) as exc:
             raise RuntimeError(f"图片模型接口请求失败：{exc}") from exc
 
@@ -728,6 +729,84 @@ def create_image_generation_provider(config: Dict[str, object]) -> ImageGenerati
     if config.get("provider") == "openai_compatible":
         return OpenAICompatibleImageGenerationProvider(config)
     return DisabledImageGenerationProvider()
+
+
+def _connection_error(label: str, exc: urllib.error.URLError) -> RuntimeError:
+    reason = str(exc.reason)
+    hint = ""
+    if "10061" in reason or "refused" in reason.lower() or "拒绝" in reason:
+        hint = "；请检查接口地址和端口，并确认目标服务已经启动"
+    return RuntimeError(f"{label}连接失败：{reason}{hint}")
+
+
+def _openai_api_root(base_url: object) -> str:
+    value = str(base_url).rstrip("/")
+    for suffix in ("/chat/completions", "/images/generations", "/images/edits"):
+        if value.endswith(suffix):
+            return value[: -len(suffix)]
+    return value
+
+
+def _probe_openai_image_model(config: Dict[str, object]) -> None:
+    model = str(config.get("model", "")).strip()
+    url = _openai_api_root(config.get("base_url", "")) + "/models/" + quote(model, safe="")
+    headers = {"Accept": "application/json"}
+    api_key = str(config.get("api_key", ""))
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    request = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=int(config.get("timeout_seconds", 120))) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:500]
+        raise RuntimeError(f"图片模型接口返回 HTTP {exc.code}: {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise _connection_error("图片模型接口", exc) from exc
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"图片模型接口请求失败：{exc}") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("图片模型查询接口没有返回 JSON 对象")
+
+
+def test_provider_connection(kind: str, config: Dict[str, object]) -> Dict[str, object]:
+    """Exercise one provider without persisting settings or generating a paid test image."""
+    started = time.perf_counter()
+    provider = str(config.get("provider", ""))
+    model = str(config.get("model", ""))
+    if kind == "text":
+        if provider == "local":
+            message = "本地规则模型可用"
+        else:
+            test_config = dict(config)
+            test_config.update({"temperature": 0, "max_tokens": 16})
+            content = OpenAICompatibleLLMProvider(test_config)._chat(
+                "You are a connection test. Reply with OK only.",
+                "OK",
+            )
+            if not content.strip():
+                raise RuntimeError("文本模型返回了空响应")
+            message = f"文本模型 {model} 连接和推理正常"
+    elif kind == "image":
+        if provider == "disabled":
+            raise ValueError("图片模型尚未启用")
+        _probe_openai_image_model(config)
+        message = f"图片模型 {model} 连接、鉴权和模型查询正常（未生成测试图片）"
+    elif kind == "search":
+        if provider == "disabled":
+            raise ValueError("联网参考尚未启用")
+        results = create_web_search_provider(config).search("游戏活动策划", limit=1)
+        message = f"联网参考 {provider} 连接正常，返回 {len(results)} 条测试结果"
+    else:
+        raise ValueError("测试类型只能是 text、image 或 search")
+    return {
+        "ok": True,
+        "kind": kind,
+        "provider": provider,
+        "model": model,
+        "message": message,
+        "elapsed_ms": round((time.perf_counter() - started) * 1000),
+    }
 
 
 class MarkdownExporter:

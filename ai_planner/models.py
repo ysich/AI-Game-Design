@@ -122,6 +122,7 @@ class WorkflowRun:
     stage: Stage = Stage.INTAKE
     route: Optional[IntentRoute] = None
     context: List[ContextSegment] = field(default_factory=list)
+    reference_ids: List[str] = field(default_factory=list)
     document: Optional[PlanningDocument] = None
     findings: List[CheckFinding] = field(default_factory=list)
     visual_tasks: List[VisualTask] = field(default_factory=list)
@@ -211,6 +212,7 @@ def run_from_dict(data: Dict[str, Any]) -> WorkflowRun:
         stage=Stage(data.get("stage", Stage.INTAKE.value)),
         route=route_obj,
         context=[_context_segment(item) for item in data.get("context", [])],
+        reference_ids=[str(item) for item in data.get("reference_ids", [])],
         document=document_obj,
         findings=[
             CheckFinding(

@@ -34,6 +34,7 @@ from .models import (
     document_from_dict,
     to_dict,
 )
+from .references import ReferenceLibrary
 from .storage import JsonRunStore
 
 
@@ -99,6 +100,7 @@ class PlannerPipeline:
         self.web_search: WebSearchProvider = web_search or create_web_search_provider(self.model_config["search"])
         self.images_dir = self.root / ".ai-planner" / "images"
         self.images_dir.mkdir(parents=True, exist_ok=True)
+        self.reference_library = ReferenceLibrary(self.root / ".ai-planner" / "references")
         self.knowledge = knowledge or LocalKnowledgeStore(root=self.root / "Doc" / "AI策划案管线" / "知识库")
         self.exporter = exporter or MarkdownExporter()
         self.image_provider = image_provider or LocalImageProvider()
@@ -201,11 +203,20 @@ class PlannerPipeline:
             f"界面文案：{copy}。状态：{task.state}。画面清晰，信息层级明确，适合游戏内实际落地。"
         )
 
-    def create_run(self, request: str, existing_document: Dict[str, Any] | None = None) -> WorkflowRun:
+    def create_run(
+        self,
+        request: str,
+        existing_document: Dict[str, Any] | None = None,
+        reference_ids: Sequence[str] | None = None,
+    ) -> WorkflowRun:
         run_id = f"run-{uuid.uuid4().hex[:10]}"
         has_document = bool(existing_document)
         run = WorkflowRun(id=run_id, request=request.strip())
-        run.route = self.llm.route(run.request, has_document=has_document)
+        run.reference_ids = [str(item).strip() for item in (reference_ids or []) if str(item).strip()]
+        route_request = run.request
+        if run.reference_ids and len(route_request) < 12:
+            route_request += "\n已附带本地参考文件，请结合资料继续生成策划案。"
+        run.route = self.llm.route(route_request, has_document=has_document)
         if existing_document and run.route.planner_mode == PlannerMode.PARTIAL_REVISION:
             payload = existing_document.get("document", existing_document)
             if payload.get("id") and payload.get("chapters"):
@@ -213,13 +224,21 @@ class PlannerPipeline:
         run.decisions.append({"type": "intent_route", "value": run.route.route.value, "reason": run.route.reason})
         if existing_document:
             run.decisions.append({"type": "base_document", "value": existing_document.get("id", "inline")})
+        if run.reference_ids:
+            run.decisions.append({"type": "uploaded_references", "ids": run.reference_ids[:]})
         if run.route.clarification_required:
             run.stage = Stage.NEEDS_CLARIFICATION
         self.store.save(run)
         return run
 
-    def run(self, request: str, answers: Sequence[str] | None = None, existing_document: Dict[str, Any] | None = None) -> WorkflowRun:
-        run = self.create_run(request, existing_document=existing_document)
+    def run(
+        self,
+        request: str,
+        answers: Sequence[str] | None = None,
+        existing_document: Dict[str, Any] | None = None,
+        reference_ids: Sequence[str] | None = None,
+    ) -> WorkflowRun:
+        run = self.create_run(request, existing_document=existing_document, reference_ids=reference_ids)
         if run.stage == Stage.NEEDS_CLARIFICATION and not answers:
             return run
         if answers:
@@ -272,6 +291,7 @@ class PlannerPipeline:
         ]
         template_name = "活动优化案模板" if run.route and run.route.suggestion_request else "常规活动策划案模板"
         base.append(ContextSegment("template", template_name, "固定章节：目标、用户、玩法、流程、奖励、异常、界面、埋点、技术和风险。", "template", 98, 36))
+        uploaded_refs = self.reference_library.context_segments(run.reference_ids)
         refs = self.knowledge.search(run.request, limit=4)
         web_refs: List[ContextSegment] = []
         search_config = self.model_config.get("search", {})
@@ -282,8 +302,8 @@ class PlannerPipeline:
                 run.decisions.append({"type": "web_search", "status": "failed", "error": f"{type(exc).__name__}: {exc}"})
             else:
                 run.decisions.append({"type": "web_search", "status": "completed", "result_count": len(web_refs)})
-        raw_chars = sum(len(item.content) for item in base + refs + web_refs)
-        run.context = self._compact_context(base + refs + web_refs, max_chars=12000)
+        raw_chars = sum(len(item.content) for item in base + uploaded_refs + refs + web_refs)
+        run.context = self._compact_context(base + uploaded_refs + refs + web_refs, max_chars=12000)
         retained_chars = sum(len(item.content) for item in run.context)
         if raw_chars <= 7200:
             tier = "tier_0"

@@ -25,7 +25,9 @@ python -m ai_planner.cli serve
 - `GET /api/images/{filename}`：读取已保存的本地生成图片。
 - `GET /api/runs`：列出运行快照。
 - `GET /api/runs/{id}`：读取完整运行结果。
-- `POST /api/runs`：运行管线，body 为 `{ "request": "...", "answers": [] }`。
+- `POST /api/runs`：运行管线，body 为 `{ "request": "...", "answers": [], "reference_ids": [] }`；勾选的本地参考会进入本次上下文。
+- `POST /api/references/upload`：以 `multipart/form-data` 上传多个本地参考文件；支持 Markdown、TXT、CSV、JSON、YAML、DOC/DOCX、PDF 和 PNG/JPEG/WebP/GIF/BMP/SVG 图片，单个文件最大 20 MB。
+- `GET /api/references/uploaded`：列出已上传的本地参考资料；`GET /api/references/files/{id}` 读取原文件，`DELETE /api/references/uploaded/{id}` 移除资料。
 - `POST /api/runs/{id}/revise`：对已有运行做局部修改，body 为 `{ "instruction": "把奖励章节改为..." }`。
 - `GET /api/documents`：列出本地 Markdown 文档库中的策划案。
 - `GET /api/documents?q=签到`：检索本地文档标题和正文。

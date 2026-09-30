@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import mimetypes
 import sys
+from email import policy
+from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -12,6 +14,7 @@ from .pipeline import PlannerPipeline
 
 
 MAX_JSON_BODY_BYTES = 16 * 1024 * 1024
+MAX_UPLOAD_REQUEST_BYTES = 64 * 1024 * 1024
 
 
 class PlannerRequestHandler(BaseHTTPRequestHandler):
@@ -37,6 +40,29 @@ class PlannerRequestHandler(BaseHTTPRequestHandler):
         if length > MAX_JSON_BODY_BYTES:
             raise ValueError("请求体不能超过 16 MB")
         return json.loads(self.rfile.read(length) or b"{}")
+
+    def _multipart_files(self):
+        content_type = self.headers.get("Content-Type", "")
+        if not content_type.lower().startswith("multipart/form-data"):
+            raise ValueError("上传接口需要 multipart/form-data 请求")
+        length = int(self.headers.get("Content-Length", "0"))
+        if length <= 0 or length > MAX_UPLOAD_REQUEST_BYTES:
+            raise ValueError("上传请求大小必须在 1 B 到 64 MB 之间")
+        body = self.rfile.read(length)
+        envelope = BytesParser(policy=policy.default).parsebytes(
+            (f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n").encode("ascii") + body
+        )
+        if not envelope.is_multipart():
+            raise ValueError("上传请求格式无效")
+        files = []
+        for part in envelope.iter_parts():
+            filename = part.get_filename()
+            if not filename:
+                continue
+            files.append((filename, part.get_payload(decode=True) or b"", part.get_content_type()))
+        if not files:
+            raise ValueError("至少选择一个参考文件")
+        return files
 
     def _static_file(self, path: str) -> bool:
         relative = path.removeprefix("/web/")
@@ -130,6 +156,14 @@ class PlannerRequestHandler(BaseHTTPRequestHandler):
                 content_type = mimetypes.guess_type(image_path.name)[0] or "application/octet-stream"
                 self._send(200, image_path.read_bytes(), content_type)
                 return
+            if path == "/api/references/uploaded":
+                self._send(200, self.pipeline.reference_library.list())
+                return
+            if path.startswith("/api/references/files/"):
+                reference_id = unquote(path.split("/", 4)[4])
+                metadata, file_data = self.pipeline.reference_library.read_file(reference_id)
+                self._send(200, file_data, metadata.get("mime_type", "application/octet-stream"))
+                return
             if path == "/api/runs":
                 self._send(200, [to_dict(run) for run in self.pipeline.store.list()])
                 return
@@ -219,6 +253,10 @@ class PlannerRequestHandler(BaseHTTPRequestHandler):
         path = parsed.path
         query = parse_qs(parsed.query)
         try:
+            if path.startswith("/api/references/uploaded/"):
+                reference_id = unquote(path.split("/", 4)[4])
+                self._send(200, self.pipeline.reference_library.delete(reference_id))
+                return
             if path.startswith("/api/documents/"):
                 document_id = unquote(path.split("/", 3)[3])
                 version_value = query.get("expected_version", [None])[0]
@@ -241,6 +279,10 @@ class PlannerRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self):  # noqa: N802
         path = urlparse(self.path).path
         try:
+            if path == "/api/references/upload":
+                items = [self.pipeline.reference_library.upload(filename, data, mime_type) for filename, data, mime_type in self._multipart_files()]
+                self._send(201, {"items": items, "count": len(items)})
+                return
             body = self._json_body()
             if path == "/api/config":
                 self._send(200, self.pipeline.update_model_config(body))
@@ -265,7 +307,15 @@ class PlannerRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/runs":
                 request = str(body.get("request", ""))
                 answers = body.get("answers") or []
-                run = self.pipeline.run(request, answers=answers, existing_document=body.get("existing_document"))
+                reference_ids = body.get("reference_ids") or []
+                if not isinstance(reference_ids, list):
+                    raise ValueError("reference_ids 必须是数组")
+                run = self.pipeline.run(
+                    request,
+                    answers=answers,
+                    existing_document=body.get("existing_document"),
+                    reference_ids=reference_ids,
+                )
                 self._send(200, to_dict(run))
                 return
             if path == "/api/coding":

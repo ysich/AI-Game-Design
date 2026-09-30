@@ -11,6 +11,23 @@ python -m ai_planner.cli run "做一个为期 7 天的回流玩家签到活动�
 python -m ai_planner.cli serve
 ```
 
+## Agent / Skill 无网页入口
+
+仓库的 `skills/` 目录提供 7 个可独立调用的流程 skill：完整策划案生成、局部修改、参考资料管理、文档库管理、视觉任务读取、图片生成和 Coding 案生成。它们统一调用本地 CLI，不需要启动网页工作台。
+
+```powershell
+python -m ai_planner.cli intake "做一个回流签到活动"
+python -m ai_planner.cli generate "做一个包含任务和奖励的社区活动"
+python -m ai_planner.cli revise <run_id> "把奖励章节改为服务端校验"
+python -m ai_planner.cli reference upload <file>...
+python -m ai_planner.cli document search "社区任务"
+python -m ai_planner.cli visual <run_id>
+python -m ai_planner.cli image <run_id> <task_id>
+python -m ai_planner.cli coding <run_id> --output coding-case.md
+```
+
+所有命令均支持 `--root <项目根目录>`。默认输出 JSON，`coding` 未指定 `--output` 时直接输出 Markdown。具体触发条件和操作约束见各 skill 的 `SKILL.md`。
+
 打开 <http://127.0.0.1:8765/> 使用工作台。运行记录会保存到项目目录下的 `.ai-planner/runs/`；策划案正文会写入 `Doc/AI策划案管线/文档库/`，每次修改还会保存到该目录的 `history/`。用于生成上下文的模板、约束和历史案例位于 `Doc/AI策划案管线/知识库/`，新增 Markdown 文件后重启工作台即可被检索。
 
 启动工作台后，点击顶部的“模型设置”可分别配置文本模型与图片模型。文本默认使用本地规则模型，也可接入 OpenAI 兼容的 Chat Completions 接口；图片模型默认关闭，启用后接入 OpenAI 兼容的 Images API。两类模型可以使用不同的地址、模型名称和 API Key。配置会保存到 `.ai-planner/model-config.json` 并立即生效，API Key 不会通过读取配置接口返回。图片工作台生成的结果保存在 `.ai-planner/images/`。

@@ -123,6 +123,7 @@ class WorkflowRun:
     route: Optional[IntentRoute] = None
     context: List[ContextSegment] = field(default_factory=list)
     reference_ids: List[str] = field(default_factory=list)
+    image_reference_id: Optional[str] = None
     document: Optional[PlanningDocument] = None
     findings: List[CheckFinding] = field(default_factory=list)
     visual_tasks: List[VisualTask] = field(default_factory=list)
@@ -213,6 +214,7 @@ def run_from_dict(data: Dict[str, Any]) -> WorkflowRun:
         route=route_obj,
         context=[_context_segment(item) for item in data.get("context", [])],
         reference_ids=[str(item) for item in data.get("reference_ids", [])],
+        image_reference_id=None if data.get("image_reference_id") is None else str(data.get("image_reference_id") or ""),
         document=document_obj,
         findings=[
             CheckFinding(

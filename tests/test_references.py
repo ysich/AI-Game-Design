@@ -14,6 +14,15 @@ from ai_planner.references import ReferenceLibrary
 from ai_planner.server import PlannerRequestHandler
 
 
+class CapturingImageProvider:
+    def __init__(self):
+        self.reference_image = None
+
+    def generate(self, prompt, **kwargs):
+        self.reference_image = kwargs.get("reference_image")
+        return b"\x89PNG\r\n\x1a\nresult", "image/png", prompt + " refined"
+
+
 class ReferenceLibraryTests(unittest.TestCase):
     def test_upload_extracts_text_docx_and_keeps_image(self):
         root = Path.cwd() / ".reference-library-test"
@@ -43,6 +52,7 @@ class ReferenceApiTests(unittest.TestCase):
         shutil.rmtree(root, ignore_errors=True)
         self.addCleanup(lambda: shutil.rmtree(root, ignore_errors=True))
         pipeline = PlannerPipeline(root)
+        self.pipeline = pipeline
 
         class Handler(PlannerRequestHandler):
             pass
@@ -95,6 +105,99 @@ class ReferenceApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(run["reference_ids"], [reference_id])
         self.assertTrue(any(item["id"] == reference_id and "奖励上限" in item["content"] for item in run["context"]))
+
+    def test_run_level_image_reference_is_reused_for_generation(self):
+        image_data = b"\x89PNG\r\n\x1a\nreference"
+        body, content_type = self.multipart("整体风格.png", image_data, "image/png")
+        status, uploaded = self.request("/api/references/upload", body, {"Content-Type": content_type}, "POST")
+        self.assertEqual(status, 201)
+        reference_id = uploaded["items"][0]["id"]
+
+        status, run = self.request(
+            "/api/runs",
+            json.dumps({"request": "设计一个包含任务、奖励和结算页面的周末挑战活动。"}).encode(),
+            {"Content-Type": "application/json"},
+            "POST",
+        )
+        self.assertEqual(status, 200)
+        status, updated = self.request(
+            f"/api/runs/{run['id']}/image-reference",
+            json.dumps({"reference_id": reference_id}).encode(),
+            {"Content-Type": "application/json"},
+            "PUT",
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(updated["image_reference_id"], reference_id)
+
+        provider = CapturingImageProvider()
+        self.pipeline.image_generator = provider
+        status, generated = self.request(
+            "/api/images/generate",
+            json.dumps({"run_id": run["id"], "task_id": run["visual_tasks"][0]["id"]}).encode(),
+            {"Content-Type": "application/json"},
+            "POST",
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(provider.reference_image, (image_data, "image/png"))
+        self.assertEqual(generated["reference_image_id"], reference_id)
+        self.assertEqual(generated["reference_image_name"], "整体风格.png")
+
+        status, cleared = self.request(
+            f"/api/runs/{run['id']}/image-reference",
+            json.dumps({"reference_id": ""}).encode(),
+            {"Content-Type": "application/json"},
+            "PUT",
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(cleared["image_reference_id"], "")
+
+    def test_run_uses_selected_library_image_as_default_reference(self):
+        image_data = b"\xff\xd8\xffreference"
+        body, content_type = self.multipart("默认风格.jpg", image_data, "image/jpeg")
+        status, uploaded = self.request("/api/references/upload", body, {"Content-Type": content_type}, "POST")
+        reference_id = uploaded["items"][0]["id"]
+        status, run = self.request(
+            "/api/runs",
+            json.dumps({
+                "request": "设计一个社区任务活动，包含任务和奖励。",
+                "reference_ids": [reference_id],
+            }).encode(),
+            {"Content-Type": "application/json"},
+            "POST",
+        )
+        self.assertEqual(status, 200)
+        self.assertIsNone(run["image_reference_id"])
+
+        provider = CapturingImageProvider()
+        self.pipeline.image_generator = provider
+        status, generated = self.request(
+            "/api/images/generate",
+            json.dumps({"run_id": run["id"], "task_id": run["visual_tasks"][0]["id"]}).encode(),
+            {"Content-Type": "application/json"},
+            "POST",
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(provider.reference_image, (image_data, "image/jpeg"))
+        self.assertEqual(generated["reference_image_id"], reference_id)
+
+    def test_run_level_image_reference_rejects_document(self):
+        body, content_type = self.multipart("规则.txt", "规则正文".encode())
+        status, uploaded = self.request("/api/references/upload", body, {"Content-Type": content_type}, "POST")
+        self.assertEqual(status, 201)
+        status, run = self.request(
+            "/api/runs",
+            json.dumps({"request": "设计一个社区任务活动。"}).encode(),
+            {"Content-Type": "application/json"},
+            "POST",
+        )
+        status, result = self.request(
+            f"/api/runs/{run['id']}/image-reference",
+            json.dumps({"reference_id": uploaded["items"][0]["id"]}).encode(),
+            {"Content-Type": "application/json"},
+            "PUT",
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("必须选择图片", result["error"])
 
 
 if __name__ == "__main__":

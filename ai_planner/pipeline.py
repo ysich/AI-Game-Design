@@ -57,12 +57,16 @@ def _decode_reference_image(value: str | None) -> tuple[bytes, str] | None:
         image = base64.b64decode(encoded, validate=True)
     except (binascii.Error, ValueError) as exc:
         raise ValueError("参考图数据无法读取") from exc
+    return _validate_reference_image(image, mime_type)
+
+
+def _validate_reference_image(image: bytes, mime_type: str = "") -> tuple[bytes, str]:
     if not image or len(image) > MAX_REFERENCE_IMAGE_BYTES:
         raise ValueError("参考图大小必须在 1 B 到 10 MB 之间")
     detected_mime = _detect_reference_image_mime(image)
-    if detected_mime != mime_type:
+    if mime_type and detected_mime != mime_type.lower():
         raise ValueError("参考图格式与文件内容不一致")
-    return image, mime_type
+    return image, detected_mime
 
 
 def _detect_reference_image_mime(data: bytes) -> str:
@@ -130,6 +134,39 @@ class PlannerPipeline:
             raise ValueError("搜索结果数必须在 1 到 10 之间")
         return self.web_search.search(query, limit=selected_limit)
 
+    def set_image_reference(self, run_id: str, reference_id: str) -> WorkflowRun:
+        run = self.store.load(run_id)
+        selected_id = str(reference_id or "").strip()
+        if selected_id:
+            metadata, image = self.reference_library.read_file(selected_id)
+            if metadata.get("kind") != "image":
+                raise ValueError("总参考图必须选择图片资料")
+            _validate_reference_image(image, str(metadata.get("mime_type", "")))
+        run.image_reference_id = selected_id
+        return self.store.save(run)
+
+    def _run_image_reference(self, run: WorkflowRun) -> tuple[tuple[bytes, str] | None, str, str]:
+        reference_id = run.image_reference_id
+        if reference_id is None:
+            available_images = {
+                item.get("id") for item in self.reference_library.list()
+                if item.get("kind") == "image" and item.get("mime_type") in REFERENCE_IMAGE_MIME_TYPES
+            }
+            reference_id = next((
+                item_id for item_id in run.reference_ids
+                if item_id in available_images
+            ), "")
+        if not reference_id:
+            return None, "", ""
+        try:
+            metadata, image = self.reference_library.read_file(reference_id)
+        except KeyError:
+            return None, "", ""
+        if metadata.get("kind") != "image":
+            return None, "", ""
+        reference = _validate_reference_image(image, str(metadata.get("mime_type", "")))
+        return reference, str(metadata.get("filename", "总参考图")), reference_id
+
     def generate_image(
         self,
         run_id: str,
@@ -150,6 +187,9 @@ class PlannerPipeline:
         if len(final_prompt) > 8000:
             raise ValueError("图片提示词不能超过 8000 个字符")
         reference = _decode_reference_image(reference_image)
+        reference_id = ""
+        if not reference:
+            reference, reference_image_name, reference_id = self._run_image_reference(run)
         selected_size = str(size).strip() if size is not None else str(self.model_config["image"].get("size", "1024x1024"))
         if selected_size not in SUPPORTED_IMAGE_SIZES:
             raise ValueError("图片尺寸不受支持")
@@ -187,6 +227,8 @@ class PlannerPipeline:
             (self.images_dir / reference_filename).write_bytes(reference[0])
             result["reference_image_url"] = f"/api/images/{reference_filename}"
             result["reference_image_name"] = str(reference_image_name or "参考图")[:160]
+            if reference_id:
+                result["reference_image_id"] = reference_id
         run.generated_images.append(result)
         task.status = "generated"
         self.store.save(run)

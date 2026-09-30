@@ -123,11 +123,11 @@ class WorkflowRun:
     route: Optional[IntentRoute] = None
     context: List[ContextSegment] = field(default_factory=list)
     reference_ids: List[str] = field(default_factory=list)
-    image_reference_id: Optional[str] = None
+    image_reference_ids: Optional[List[str]] = None
     document: Optional[PlanningDocument] = None
     findings: List[CheckFinding] = field(default_factory=list)
     visual_tasks: List[VisualTask] = field(default_factory=list)
-    generated_images: List[Dict[str, str]] = field(default_factory=list)
+    generated_images: List[Dict[str, Any]] = field(default_factory=list)
     flow_edges: List[Dict[str, str]] = field(default_factory=list)
     decisions: List[Dict[str, Any]] = field(default_factory=list)
     exports: Dict[str, str] = field(default_factory=dict)
@@ -186,6 +186,23 @@ def _context_segment(data: Dict[str, Any]) -> ContextSegment:
     return segment
 
 
+def _image_reference_ids(data: Dict[str, Any]) -> Optional[List[str]]:
+    if "image_reference_ids" in data:
+        values = data.get("image_reference_ids")
+        if values is None:
+            return None
+        if not isinstance(values, list):
+            values = [values]
+        return list(dict.fromkeys(str(item).strip() for item in values if str(item).strip()))
+    if "image_reference_id" in data:
+        value = data.get("image_reference_id")
+        if value is None:
+            return None
+        selected = str(value).strip()
+        return [selected] if selected else []
+    return None
+
+
 def run_from_dict(data: Dict[str, Any]) -> WorkflowRun:
     route = data.get("route")
     route_obj = None
@@ -214,7 +231,7 @@ def run_from_dict(data: Dict[str, Any]) -> WorkflowRun:
         route=route_obj,
         context=[_context_segment(item) for item in data.get("context", [])],
         reference_ids=[str(item) for item in data.get("reference_ids", [])],
-        image_reference_id=None if data.get("image_reference_id") is None else str(data.get("image_reference_id") or ""),
+        image_reference_ids=_image_reference_ids(data),
         document=document_obj,
         findings=[
             CheckFinding(

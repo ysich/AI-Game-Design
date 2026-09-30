@@ -9,7 +9,7 @@
     .run-picker{min-width:310px}.task-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.image-task{overflow:hidden;border:1px solid var(--line);border-radius:8px;background:#fff}.image-preview{min-height:220px;display:flex;align-items:center;justify-content:center;padding:12px;overflow:hidden;color:var(--quiet);background:#f2f5fa;font-size:12px}.image-preview-button{width:100%;border:0;color:inherit;background:#f2f5fa;font:inherit;cursor:zoom-in}.image-preview-button:focus-visible{outline:3px solid rgba(55,125,255,.45);outline-offset:-3px}.image-preview img{display:block;width:auto;height:auto;max-width:100%;max-height:380px;object-fit:contain;background:#eef1f6;transition:transform .18s ease}.image-preview-button:hover img{transform:scale(1.015)}.task-body{padding:15px}.task-title{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.task-title h2{margin:0;font-size:15px}.task-title .badge{flex:0 0 auto}.task-copy{margin:8px 0;color:var(--muted);font-size:11px;line-height:1.6}.components{margin:0 0 12px;color:var(--quiet);font-size:10px}.prompt{width:100%;min-height:92px;padding:10px 11px;border:1px solid var(--line);border-radius:8px;resize:vertical;color:var(--ink);background:#fff;font:inherit;font-size:11px;line-height:1.6;outline:0}.prompt:focus{border-color:#9abbff;box-shadow:0 0 0 3px rgba(55,125,255,.1)}.task-actions{display:flex;align-items:center;gap:9px;margin-top:10px}.task-status{color:var(--muted);font-size:10px}.image-meta{margin-top:8px;color:var(--quiet);font-size:10px}.config-state{display:flex;align-items:center;gap:8px}.config-state .badge{white-space:nowrap}.lightbox-open{overflow:hidden}.image-lightbox{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:28px;background:rgba(15,23,42,.84)}.image-lightbox[hidden]{display:none}.image-lightbox img{display:block;width:auto;height:auto;max-width:calc(100vw - 56px);max-height:calc(100vh - 56px);object-fit:contain;box-shadow:0 18px 60px rgba(0,0,0,.35)}.image-lightbox-close{position:absolute;top:16px;right:18px;width:40px;height:40px;border:1px solid rgba(255,255,255,.45);border-radius:50%;color:#fff;background:rgba(15,23,42,.6);font-size:24px;line-height:1;cursor:pointer}.image-lightbox-close:hover{background:rgba(15,23,42,.9)}@media(max-width:800px){.task-grid{grid-template-columns:1fr}.run-picker{min-width:0;width:100%}.title-row .field{margin-top:14px}.image-preview{min-height:180px}.image-preview img{max-height:320px}.image-lightbox{padding:16px}.image-lightbox img{max-width:calc(100vw - 32px);max-height:calc(100vh - 32px)}}
   </style>
   <style>
-    .prompt-label{display:block;margin:12px 0 6px;color:var(--muted);font-size:11px;font-weight:700}.supplement-prompt{min-height:68px}.global-reference{display:grid;grid-template-columns:minmax(260px,.9fr) minmax(320px,1.1fr);gap:14px;margin-top:14px;padding:14px;border:1px solid var(--line);border-radius:8px;background:#fff}.global-reference[hidden]{display:none}.global-reference-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:9px}.global-reference-heading h2{margin:0;font-size:14px}.global-reference-heading small{color:var(--quiet);font-size:10px}.global-reference-controls{display:flex;align-items:center;gap:8px}.global-reference-controls select{min-width:0;min-height:34px;flex:1;padding:0 9px;border:1px solid var(--line);border-radius:8px;color:var(--ink);background:#fff;font:inherit;font-size:11px}.global-reference-controls select:focus{border-color:#9abbff;outline:0;box-shadow:0 0 0 3px rgba(55,125,255,.1)}.reference-upload{display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:0 12px;border:1px solid var(--line);border-radius:8px;color:var(--ink);background:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap}.reference-upload:hover{border-color:#bfd4ff;color:var(--accent);background:var(--accent-soft)}.reference-upload input{display:none}.reference-preview{min-height:72px;display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--line);border-radius:8px;color:var(--quiet);background:#f8faff;font-size:10px}.reference-preview .image-preview-button{width:92px;flex:0 0 92px;padding:0}.reference-preview img{width:92px;height:64px;flex:0 0 auto;object-fit:cover;border-radius:5px;background:#eef1f6}.reference-preview-copy{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.reference-preview-copy small{display:block;margin-top:4px;color:var(--quiet);overflow:hidden;text-overflow:ellipsis}.reference-status{min-height:16px;margin-top:6px;color:var(--muted);font-size:10px}@media(max-width:800px){.global-reference{grid-template-columns:1fr}.global-reference-controls{align-items:stretch;flex-direction:column}.global-reference-controls select,.reference-upload{width:100%}}
+    .prompt-label{display:block;margin:12px 0 6px;color:var(--muted);font-size:11px;font-weight:700}.supplement-prompt{min-height:68px}.global-reference{display:grid;grid-template-columns:minmax(260px,.9fr) minmax(320px,1.1fr);gap:14px;margin-top:14px;padding:14px;border:1px solid var(--line);border-radius:8px;background:#fff}.global-reference[hidden]{display:none}.global-reference-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:9px}.global-reference-heading h2{margin:0;font-size:14px}.global-reference-heading small{color:var(--quiet);font-size:10px}.global-reference-controls{display:flex;align-items:stretch;gap:8px}.reference-library-list{min-height:42px;max-height:148px;min-width:0;flex:1;overflow:auto;padding:5px;border:1px solid var(--line);border-radius:8px;background:#f8faff}.reference-library-empty{padding:8px;color:var(--quiet);font-size:10px}.reference-option{display:grid;grid-template-columns:18px 34px minmax(0,1fr);align-items:center;gap:7px;padding:5px;border-radius:6px;color:var(--muted);font-size:10px;cursor:pointer}.reference-option:hover{background:var(--accent-soft)}.reference-option input{margin:0}.reference-option img{width:34px;height:34px;object-fit:cover;border-radius:5px;background:#eef1f6}.reference-option span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.reference-upload{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:0 12px;border:1px solid var(--line);border-radius:8px;color:var(--ink);background:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap}.reference-upload:hover{border-color:#bfd4ff;color:var(--accent);background:var(--accent-soft)}.reference-upload input{display:none}.reference-preview{min-height:72px;padding:8px;border:1px solid var(--line);border-radius:8px;color:var(--quiet);background:#f8faff;font-size:10px}.reference-preview-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:7px}.reference-selected{min-width:0;padding:0;border:0;color:var(--muted);background:transparent;font:inherit;text-align:left;cursor:zoom-in}.reference-selected img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:5px;background:#eef1f6}.reference-selected span{display:block;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.reference-preview-copy{min-width:0;padding:7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.reference-preview-copy small{display:block;margin-top:4px;color:var(--quiet);overflow:hidden;text-overflow:ellipsis}.reference-status{min-height:16px;margin-top:6px;color:var(--muted);font-size:10px}@media(max-width:800px){.global-reference{grid-template-columns:1fr}.global-reference-controls{flex-direction:column}.reference-upload{width:100%}}
   </style>
 </head>
 <body>
@@ -25,10 +25,10 @@
     <div class="hint" id="provider-hint">正在读取图片模型配置…</div>
     <section class="global-reference" id="global-reference" hidden>
       <div>
-        <div class="global-reference-heading"><h2>策划案总参考图</h2><small>全部界面任务共用</small></div>
+        <div class="global-reference-heading"><h2>策划案总参考图</h2><small id="global-reference-count">0 / 16</small></div>
         <div class="global-reference-controls">
-          <select id="global-reference-select" aria-label="策划案总参考图"></select>
-          <label class="reference-upload" for="global-reference-upload">上传参考图<input id="global-reference-upload" type="file" accept="image/png,image/jpeg,image/webp" /></label>
+          <div class="reference-library-list" id="global-reference-options" role="group" aria-label="从资料库选择总参考图"></div>
+          <label class="reference-upload" for="global-reference-upload">上传参考图<input id="global-reference-upload" type="file" multiple accept="image/png,image/jpeg,image/webp" /></label>
         </div>
         <div class="reference-status" id="global-reference-status"></div>
       </div>
@@ -59,70 +59,76 @@
     function closeLightbox(){const lightbox=$('#image-lightbox');if(lightbox.hidden)return;lightbox.hidden=true;$('#image-lightbox-image').removeAttribute('src');document.body.classList.remove('lightbox-open');lastFocusedElement?.focus();lastFocusedElement=null;}
     function bindPreviewEvents(){document.querySelectorAll('[data-preview-image]').forEach(button=>button.onclick=()=>openLightbox(button.dataset.previewImage,button.dataset.previewAlt));}
     function taskStateKey(task){return currentRun.id+'::'+task.id;}
-    function effectiveReferenceId(run){
-      if(!run)return '';
-      if(run.image_reference_id!==undefined&&run.image_reference_id!==null)return run.image_reference_id;
-      return (run.reference_ids||[]).find(id=>referenceLibraryImages.some(item=>item.id===id))||'';
+    function effectiveReferenceIds(run){
+      if(!run)return [];
+      if(run.image_reference_ids!==undefined&&run.image_reference_ids!==null)return run.image_reference_ids;
+      if(run.image_reference_id!==undefined&&run.image_reference_id!==null)return run.image_reference_id?[run.image_reference_id]:[];
+      return (run.reference_ids||[]).filter(id=>referenceLibraryImages.some(item=>item.id===id)).slice(0,16);
     }
-    function currentReference(){const id=effectiveReferenceId(currentRun);return referenceLibraryImages.find(item=>item.id===id)||null;}
+    function currentReferences(){const ids=new Set(effectiveReferenceIds(currentRun));return referenceLibraryImages.filter(item=>ids.has(item.id));}
+    function setReferenceControlsDisabled(disabled){document.querySelectorAll('[data-reference-id]').forEach(input=>input.disabled=disabled);$('#global-reference-upload').disabled=disabled;}
     function renderGlobalReference(){
       const panel=$('#global-reference');
       panel.hidden=!currentRun;
       if(!currentRun)return;
-      const selectedId=effectiveReferenceId(currentRun);
-      $('#global-reference-select').innerHTML='<option value="">不使用总参考图</option>'+referenceLibraryImages.map(item=>'<option value="'+esc(item.id)+'" '+(item.id===selectedId?'selected':'')+'>'+esc(item.filename)+'</option>').join('');
-      const selected=currentReference();
-      if(selected){
-        $('#global-reference-preview').innerHTML='<button type="button" class="image-preview-button" data-preview-image="'+esc(selected.url)+'" data-preview-alt="'+esc(selected.filename)+'" aria-label="查看总参考图大图" title="查看大图"><img src="'+esc(selected.url)+'" alt="'+esc(selected.filename)+'" /></button><div class="reference-preview-copy">'+esc(selected.filename)+'<small>生成全部界面任务时使用</small></div>';
-      }else if(selectedId){
+      const selectedIds=effectiveReferenceIds(currentRun);
+      const selectedIdSet=new Set(selectedIds);
+      $('#global-reference-count').textContent=selectedIds.length+' / 16';
+      $('#global-reference-options').innerHTML=referenceLibraryImages.length?referenceLibraryImages.map(item=>'<label class="reference-option"><input type="checkbox" data-reference-id="'+esc(item.id)+'" '+(selectedIdSet.has(item.id)?'checked':'')+' /><img src="'+esc(item.url)+'" alt="" /><span title="'+esc(item.filename)+'">'+esc(item.filename)+'</span></label>').join(''):'<div class="reference-library-empty">资料库暂无图片</div>';
+      const selected=currentReferences();
+      const missingCount=selectedIds.length-selected.length;
+      if(selected.length){
+        $('#global-reference-preview').innerHTML='<div class="reference-preview-grid">'+selected.map(item=>'<button type="button" class="reference-selected" data-preview-image="'+esc(item.url)+'" data-preview-alt="'+esc(item.filename)+'" aria-label="查看 '+esc(item.filename)+' 大图" title="查看大图"><img src="'+esc(item.url)+'" alt="'+esc(item.filename)+'" /><span title="'+esc(item.filename)+'">'+esc(item.filename)+'</span></button>').join('')+'</div>'+(missingCount?'<div class="reference-preview-copy">另有 '+missingCount+' 张图片不可用</div>':'');
+      }else if(selectedIds.length){
         $('#global-reference-preview').innerHTML='<div class="reference-preview-copy">原总参考图不可用<small>请从资料库重新选择</small></div>';
       }else{
-        $('#global-reference-preview').innerHTML='<div class="reference-preview-copy">未选择总参考图<small>PNG、JPEG 或 WebP，最大 10 MB</small></div>';
+        $('#global-reference-preview').innerHTML='<div class="reference-preview-copy">未选择总参考图<small>可选择或上传多张 PNG、JPEG、WebP</small></div>';
       }
+      document.querySelectorAll('[data-reference-id]').forEach(input=>input.onchange=()=>saveGlobalReferences([...document.querySelectorAll('[data-reference-id]:checked')].map(item=>item.dataset.referenceId)));
       bindPreviewEvents();
     }
-    async function saveGlobalReference(referenceId){
+    async function saveGlobalReferences(referenceIds){
       if(!currentRun)return;
-      const select=$('#global-reference-select');
-      const upload=$('#global-reference-upload');
-      select.disabled=true;
-      upload.disabled=true;
+      referenceIds=[...new Set(referenceIds)];
+      if(referenceIds.length>16){$('#global-reference-status').textContent='总参考图最多选择 16 张';renderGlobalReference();return;}
+      setReferenceControlsDisabled(true);
       $('#global-reference-status').textContent='正在保存…';
       try{
-        const response=await fetch('/api/runs/'+encodeURIComponent(currentRun.id)+'/image-reference',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({reference_id:referenceId})});
+        const response=await fetch('/api/runs/'+encodeURIComponent(currentRun.id)+'/image-references',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({reference_ids:referenceIds})});
         const data=await response.json();
         if(!response.ok)throw new Error(data.error||'总参考图保存失败');
         const index=runs.findIndex(run=>run.id===data.id);
         if(index>=0)runs[index]=data;
         currentRun=data;
         renderGlobalReference();
-        $('#global-reference-status').textContent=referenceId?'总参考图已应用':'已停用总参考图';
+        $('#global-reference-status').textContent=referenceIds.length?'已应用 '+referenceIds.length+' 张总参考图':'已停用总参考图';
       }catch(error){
         $('#global-reference-status').textContent=error.message;
         renderGlobalReference();
       }finally{
-        select.disabled=false;
-        upload.disabled=false;
+        setReferenceControlsDisabled(false);
       }
     }
     async function uploadGlobalReference(event){
       const input=event.target;
-      const file=input.files?.[0];
-      if(!file)return;
-      if(!acceptedReferenceTypes.includes(file.type)){$('#global-reference-status').textContent='仅支持 PNG、JPEG 或 WebP';input.value='';return;}
-      if(file.size<1||file.size>10*1024*1024){$('#global-reference-status').textContent='图片大小必须在 1 B 到 10 MB 之间';input.value='';return;}
+      const files=Array.from(input.files||[]);
+      if(!files.length)return;
+      if(effectiveReferenceIds(currentRun).length+files.length>16){$('#global-reference-status').textContent='总参考图最多选择 16 张';input.value='';return;}
+      if(files.some(file=>!acceptedReferenceTypes.includes(file.type))){$('#global-reference-status').textContent='仅支持 PNG、JPEG 或 WebP';input.value='';return;}
+      if(files.some(file=>file.size<1||file.size>10*1024*1024)){$('#global-reference-status').textContent='每张图片必须在 1 B 到 10 MB 之间';input.value='';return;}
       const formData=new FormData();
-      formData.append('files',file);
+      files.forEach(file=>formData.append('files',file));
       input.disabled=true;
       $('#global-reference-status').textContent='正在上传到参考资料库…';
       try{
         const response=await fetch('/api/references/upload',{method:'POST',body:formData});
         const data=await response.json();
         if(!response.ok)throw new Error(data.error||'参考图上传失败');
-        const uploaded=(data.items||[]).find(item=>item.kind==='image'&&acceptedReferenceTypes.includes(item.mime_type));
-        if(!uploaded)throw new Error('上传结果中没有可用图片');
-        referenceLibraryImages=[uploaded,...referenceLibraryImages.filter(item=>item.id!==uploaded.id)];
-        await saveGlobalReference(uploaded.id);
+        const uploaded=(data.items||[]).filter(item=>item.kind==='image'&&acceptedReferenceTypes.includes(item.mime_type));
+        if(!uploaded.length)throw new Error('上传结果中没有可用图片');
+        const uploadedIds=new Set(uploaded.map(item=>item.id));
+        referenceLibraryImages=[...uploaded,...referenceLibraryImages.filter(item=>!uploadedIds.has(item.id))];
+        await saveGlobalReferences([...effectiveReferenceIds(currentRun),...uploadedIds]);
       }catch(error){
         $('#global-reference-status').textContent=error.message;
       }finally{
@@ -139,7 +145,8 @@
         const preview=result?'<button type="button" class="image-preview image-preview-button" data-preview-image="'+esc(result.url)+'" data-preview-alt="'+esc(task.screen_name)+'" aria-label="查看'+esc(task.screen_name)+'大图" title="查看大图"><img src="'+esc(result.url)+'" alt="'+esc(task.screen_name)+'" /></button>':'<div class="image-preview" id="preview-'+index+'">尚未生成</div>';
         const key=taskStateKey(task);
         const supplement=promptSupplements.has(key)?promptSupplements.get(key):result?.supplement_prompt||'';
-        return '<article class="image-task">'+preview+'<div class="task-body"><div class="task-title"><h2>'+esc(task.screen_name)+'</h2><span class="badge '+(result?'success':'')+'">'+(result?'已生成':'待生成')+'</span></div><p class="task-copy">'+esc(task.purpose)+' · '+esc(task.layout)+'</p><p class="components">组件：'+(task.components||[]).map(esc).join('、')+'</p><label class="prompt-label" for="prompt-'+index+'">基础提示词</label><textarea class="prompt" id="prompt-'+index+'" aria-label="'+esc(task.screen_name)+'基础提示词">'+esc(result?.base_prompt||result?.prompt||defaultPrompt(currentRun,task))+'</textarea><label class="prompt-label" for="supplement-'+index+'">补充提示词（可选）</label><textarea class="prompt supplement-prompt" id="supplement-'+index+'" data-supplement="'+index+'" placeholder="补充风格、构图、材质或需要避开的元素">'+esc(supplement)+'</textarea><div class="task-actions"><button class="primary" data-generate="'+index+'" '+(enabled?'':'disabled')+'>生成图片</button><span class="task-status" id="status-'+index+'">'+(enabled?'':'请先启用图片模型')+'</span></div>'+(result?'<div class="image-meta">模型：'+esc(result.model)+' · '+esc(imageSizeLabel(result.size||imageConfig?.size))+(result.revised_prompt?' · 模型已优化提示词':'')+(result.reference_image_url?' · 已使用总参考图':'')+'</div>':'')+'</div></article>';
+        const referenceCount=result?.reference_images?.length||(result?.reference_image_url?1:0);
+        return '<article class="image-task">'+preview+'<div class="task-body"><div class="task-title"><h2>'+esc(task.screen_name)+'</h2><span class="badge '+(result?'success':'')+'">'+(result?'已生成':'待生成')+'</span></div><p class="task-copy">'+esc(task.purpose)+' · '+esc(task.layout)+'</p><p class="components">组件：'+(task.components||[]).map(esc).join('、')+'</p><label class="prompt-label" for="prompt-'+index+'">基础提示词</label><textarea class="prompt" id="prompt-'+index+'" aria-label="'+esc(task.screen_name)+'基础提示词">'+esc(result?.base_prompt||result?.prompt||defaultPrompt(currentRun,task))+'</textarea><label class="prompt-label" for="supplement-'+index+'">补充提示词（可选）</label><textarea class="prompt supplement-prompt" id="supplement-'+index+'" data-supplement="'+index+'" placeholder="补充风格、构图、材质或需要避开的元素">'+esc(supplement)+'</textarea><div class="task-actions"><button class="primary" data-generate="'+index+'" '+(enabled?'':'disabled')+'>生成图片</button><span class="task-status" id="status-'+index+'">'+(enabled?'':'请先启用图片模型')+'</span></div>'+(result?'<div class="image-meta">模型：'+esc(result.model)+' · '+esc(imageSizeLabel(result.size||imageConfig?.size))+(result.revised_prompt?' · 模型已优化提示词':'')+(referenceCount?' · 已使用 '+referenceCount+' 张总参考图':'')+'</div>':'')+'</div></article>';
       }).join('')+'</div>';
       bindPreviewEvents();
       bindTaskInputs();
@@ -152,7 +159,8 @@
       promptSupplements.set(key,supplement);
       button.disabled=true;
       button.textContent='生成中…';
-      $('#status-'+index).textContent=currentReference()?'图片模型正在处理总参考图':'图片模型正在处理';
+      const referenceCount=currentReferences().length;
+      $('#status-'+index).textContent=referenceCount?'图片模型正在处理 '+referenceCount+' 张总参考图':'图片模型正在处理';
       const body={run_id:currentRun.id,task_id:task.id,prompt:$('#prompt-'+index).value,supplement_prompt:supplement};
       try{
         const response=await fetch('/api/images/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -191,7 +199,6 @@
       render();
     }
     $('#run-select').onchange=()=>{currentRun=runs.find(run=>run.id===$('#run-select').value)||null;renderGlobalReference();render();};
-    $('#global-reference-select').onchange=event=>saveGlobalReference(event.target.value);
     $('#global-reference-upload').onchange=uploadGlobalReference;
     $('#image-lightbox-close').onclick=closeLightbox;
     $('#image-lightbox').onclick=event=>{if(event.target.id==='image-lightbox')closeLightbox();};

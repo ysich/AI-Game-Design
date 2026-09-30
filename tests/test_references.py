@@ -12,6 +12,7 @@ from urllib.request import Request, urlopen
 from ai_planner.pipeline import PlannerPipeline
 from ai_planner.references import ReferenceLibrary
 from ai_planner.server import PlannerRequestHandler
+from ai_planner.models import run_from_dict
 
 
 class CapturingImageProvider:
@@ -44,6 +45,14 @@ class ReferenceLibraryTests(unittest.TestCase):
         self.assertIn("奖励规则", next(item.content for item in segments if item.id == markdown["id"]))
         self.assertIn("DOCX 参考正文", next(item.content for item in segments if item.id == docx["id"]))
         self.assertIn("已上传图片", next(item.content for item in segments if item.id == image["id"]))
+
+    def test_legacy_single_image_reference_is_migrated_to_list(self):
+        run = run_from_dict({
+            "id": "run-legacy",
+            "request": "历史请求",
+            "image_reference_id": "upload-old-image",
+        })
+        self.assertEqual(run.image_reference_ids, ["upload-old-image"])
 
 
 class ReferenceApiTests(unittest.TestCase):
@@ -107,11 +116,15 @@ class ReferenceApiTests(unittest.TestCase):
         self.assertTrue(any(item["id"] == reference_id and "奖励上限" in item["content"] for item in run["context"]))
 
     def test_run_level_image_reference_is_reused_for_generation(self):
-        image_data = b"\x89PNG\r\n\x1a\nreference"
-        body, content_type = self.multipart("整体风格.png", image_data, "image/png")
-        status, uploaded = self.request("/api/references/upload", body, {"Content-Type": content_type}, "POST")
+        first_image = b"\x89PNG\r\n\x1a\nreference"
+        second_image = b"RIFF\x00\x00\x00\x00WEBPreference"
+        body, content_type = self.multipart("整体风格.png", first_image, "image/png")
+        status, first_upload = self.request("/api/references/upload", body, {"Content-Type": content_type}, "POST")
         self.assertEqual(status, 201)
-        reference_id = uploaded["items"][0]["id"]
+        body, content_type = self.multipart("角色风格.webp", second_image, "image/webp")
+        status, second_upload = self.request("/api/references/upload", body, {"Content-Type": content_type}, "POST")
+        self.assertEqual(status, 201)
+        reference_ids = [first_upload["items"][0]["id"], second_upload["items"][0]["id"]]
 
         status, run = self.request(
             "/api/runs",
@@ -121,13 +134,13 @@ class ReferenceApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         status, updated = self.request(
-            f"/api/runs/{run['id']}/image-reference",
-            json.dumps({"reference_id": reference_id}).encode(),
+            f"/api/runs/{run['id']}/image-references",
+            json.dumps({"reference_ids": reference_ids}).encode(),
             {"Content-Type": "application/json"},
             "PUT",
         )
         self.assertEqual(status, 200)
-        self.assertEqual(updated["image_reference_id"], reference_id)
+        self.assertEqual(updated["image_reference_ids"], reference_ids)
 
         provider = CapturingImageProvider()
         self.pipeline.image_generator = provider
@@ -138,18 +151,19 @@ class ReferenceApiTests(unittest.TestCase):
             "POST",
         )
         self.assertEqual(status, 201)
-        self.assertEqual(provider.reference_image, (image_data, "image/png"))
-        self.assertEqual(generated["reference_image_id"], reference_id)
+        self.assertEqual(provider.reference_image, [(first_image, "image/png"), (second_image, "image/webp")])
+        self.assertEqual([item["id"] for item in generated["reference_images"]], reference_ids)
+        self.assertEqual(generated["reference_image_id"], reference_ids[0])
         self.assertEqual(generated["reference_image_name"], "整体风格.png")
 
         status, cleared = self.request(
-            f"/api/runs/{run['id']}/image-reference",
-            json.dumps({"reference_id": ""}).encode(),
+            f"/api/runs/{run['id']}/image-references",
+            json.dumps({"reference_ids": []}).encode(),
             {"Content-Type": "application/json"},
             "PUT",
         )
         self.assertEqual(status, 200)
-        self.assertEqual(cleared["image_reference_id"], "")
+        self.assertEqual(cleared["image_reference_ids"], [])
 
     def test_run_uses_selected_library_image_as_default_reference(self):
         image_data = b"\xff\xd8\xffreference"
@@ -166,7 +180,7 @@ class ReferenceApiTests(unittest.TestCase):
             "POST",
         )
         self.assertEqual(status, 200)
-        self.assertIsNone(run["image_reference_id"])
+        self.assertIsNone(run["image_reference_ids"])
 
         provider = CapturingImageProvider()
         self.pipeline.image_generator = provider
@@ -179,6 +193,7 @@ class ReferenceApiTests(unittest.TestCase):
         self.assertEqual(status, 201)
         self.assertEqual(provider.reference_image, (image_data, "image/jpeg"))
         self.assertEqual(generated["reference_image_id"], reference_id)
+        self.assertEqual(len(generated["reference_images"]), 1)
 
     def test_run_level_image_reference_rejects_document(self):
         body, content_type = self.multipart("规则.txt", "规则正文".encode())
@@ -191,8 +206,8 @@ class ReferenceApiTests(unittest.TestCase):
             "POST",
         )
         status, result = self.request(
-            f"/api/runs/{run['id']}/image-reference",
-            json.dumps({"reference_id": uploaded["items"][0]["id"]}).encode(),
+            f"/api/runs/{run['id']}/image-references",
+            json.dumps({"reference_ids": [uploaded["items"][0]["id"]]}).encode(),
             {"Content-Type": "application/json"},
             "PUT",
         )

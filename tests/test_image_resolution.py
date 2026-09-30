@@ -127,6 +127,29 @@ class ImageResolutionTests(unittest.TestCase):
         self.assertIn("edit the referenced screen", body)
         self.assertIn("Content-Type: image/png", body)
 
+    def test_provider_sends_multiple_reference_images_as_array_fields(self):
+        provider = OpenAICompatibleImageGenerationProvider({
+            "provider": "openai_compatible",
+            "model": "gpt-image-1",
+            "base_url": "https://example.test/v1",
+            "api_key": "secret",
+            "size": "1024x1024",
+            "quality": "high",
+            "timeout_seconds": 30,
+        })
+        encoded = base64.b64encode(b"\x89PNG\r\n\x1a\nmock").decode("ascii")
+        references = [
+            (b"\x89PNG\r\n\x1a\nfirst", "image/png"),
+            (b"\xff\xd8\xffsecond", "image/jpeg"),
+        ]
+        with patch("urllib.request.urlopen", return_value=FakeHttpResponse({"data": [{"b64_json": encoded}]})) as request:
+            provider.generate("merge the referenced screens", reference_image=references)
+
+        body = request.call_args.args[0].data.decode("latin-1")
+        self.assertEqual(body.count('name="image[]"'), 2)
+        self.assertIn('filename="reference-1.png"', body)
+        self.assertIn('filename="reference-2.jpg"', body)
+
 
 if __name__ == "__main__":
     unittest.main()

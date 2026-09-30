@@ -55,7 +55,7 @@ class ImageGenerationProvider(Protocol):
         self,
         prompt: str,
         size: str | None = None,
-        reference_image: tuple[bytes, str] | None = None,
+        reference_image: tuple[bytes, str] | Sequence[tuple[bytes, str]] | None = None,
     ) -> tuple[bytes, str, str]: ...
 
 
@@ -579,7 +579,7 @@ class DisabledImageGenerationProvider:
         self,
         prompt: str,
         size: str | None = None,
-        reference_image: tuple[bytes, str] | None = None,
+        reference_image: tuple[bytes, str] | Sequence[tuple[bytes, str]] | None = None,
     ) -> tuple[bytes, str, str]:
         raise ValueError("图片模型尚未启用，请先在模型设置中配置")
 
@@ -598,7 +598,7 @@ class OpenAICompatibleImageGenerationProvider:
         self,
         prompt: str,
         size: str | None = None,
-        reference_image: tuple[bytes, str] | None = None,
+        reference_image: tuple[bytes, str] | Sequence[tuple[bytes, str]] | None = None,
     ) -> tuple[bytes, str, str]:
         if reference_image:
             return self._generate_edit(prompt, size, reference_image)
@@ -633,12 +633,22 @@ class OpenAICompatibleImageGenerationProvider:
         self,
         prompt: str,
         size: str | None,
-        reference_image: tuple[bytes, str],
+        reference_image: tuple[bytes, str] | Sequence[tuple[bytes, str]],
     ) -> tuple[bytes, str, str]:
-        image_data, mime_type = reference_image
-        extension = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}.get(mime_type)
-        if not extension:
-            raise ValueError("参考图仅支持 PNG、JPEG 或 WebP 格式")
+        if isinstance(reference_image, tuple) and len(reference_image) == 2 and isinstance(reference_image[0], bytes):
+            reference_images = [reference_image]
+        else:
+            reference_images = list(reference_image)
+        if not reference_images or len(reference_images) > 16:
+            raise ValueError("参考图数量必须在 1 到 16 张之间")
+        files = []
+        file_field = "image" if len(reference_images) == 1 else "image[]"
+        for index, (image_data, mime_type) in enumerate(reference_images, start=1):
+            extension = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}.get(mime_type)
+            if not extension:
+                raise ValueError("参考图仅支持 PNG、JPEG 或 WebP 格式")
+            filename = f"reference.{extension}" if len(reference_images) == 1 else f"reference-{index}.{extension}"
+            files.append((file_field, filename, image_data, mime_type))
         boundary = "----AIPlanner" + uuid.uuid4().hex
         fields = {
             "model": self.model,
@@ -649,7 +659,7 @@ class OpenAICompatibleImageGenerationProvider:
         }
         if not self.model.lower().startswith("gpt-image"):
             fields["response_format"] = "b64_json"
-        body = _multipart_form_data(fields, "image", f"reference.{extension}", image_data, mime_type, boundary)
+        body = _multipart_form_data(fields, files, boundary)
         url = self.base_url if self.base_url.endswith("/images/edits") else self.base_url + "/images/edits"
         headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
         if self.api_key:
@@ -685,10 +695,7 @@ class OpenAICompatibleImageGenerationProvider:
 
 def _multipart_form_data(
     fields: Dict[str, object],
-    file_field: str,
-    filename: str,
-    file_data: bytes,
-    mime_type: str,
+    files: Sequence[tuple[str, str, bytes, str]],
     boundary: str,
 ) -> bytes:
     chunks: List[bytes] = []
@@ -696,12 +703,13 @@ def _multipart_form_data(
         chunks.append(
             f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n".encode("utf-8")
         )
-    chunks.append(
-        f"--{boundary}\r\nContent-Disposition: form-data; name=\"{file_field}\"; filename=\"{filename}\"\r\n"
-        f"Content-Type: {mime_type}\r\n\r\n".encode("utf-8")
-        + file_data
-        + b"\r\n"
-    )
+    for file_field, filename, file_data, mime_type in files:
+        chunks.append(
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"{file_field}\"; filename=\"{filename}\"\r\n"
+            f"Content-Type: {mime_type}\r\n\r\n".encode("utf-8")
+            + file_data
+            + b"\r\n"
+        )
     chunks.append(f"--{boundary}--\r\n".encode("ascii"))
     return b"".join(chunks)
 

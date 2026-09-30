@@ -39,6 +39,7 @@ from .storage import JsonRunStore
 
 
 MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024
+MAX_REFERENCE_IMAGES = 16
 REFERENCE_IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/webp"}
 
 
@@ -134,38 +135,38 @@ class PlannerPipeline:
             raise ValueError("搜索结果数必须在 1 到 10 之间")
         return self.web_search.search(query, limit=selected_limit)
 
-    def set_image_reference(self, run_id: str, reference_id: str) -> WorkflowRun:
+    def set_image_references(self, run_id: str, reference_ids: Sequence[str]) -> WorkflowRun:
         run = self.store.load(run_id)
-        selected_id = str(reference_id or "").strip()
-        if selected_id:
+        selected_ids = list(dict.fromkeys(str(item).strip() for item in reference_ids if str(item).strip()))
+        if len(selected_ids) > MAX_REFERENCE_IMAGES:
+            raise ValueError(f"总参考图最多选择 {MAX_REFERENCE_IMAGES} 张")
+        for selected_id in selected_ids:
             metadata, image = self.reference_library.read_file(selected_id)
             if metadata.get("kind") != "image":
                 raise ValueError("总参考图必须选择图片资料")
             _validate_reference_image(image, str(metadata.get("mime_type", "")))
-        run.image_reference_id = selected_id
+        run.image_reference_ids = selected_ids
         return self.store.save(run)
 
-    def _run_image_reference(self, run: WorkflowRun) -> tuple[tuple[bytes, str] | None, str, str]:
-        reference_id = run.image_reference_id
-        if reference_id is None:
+    def _run_image_references(self, run: WorkflowRun) -> List[tuple[bytes, str, str, str]]:
+        reference_ids = run.image_reference_ids
+        if reference_ids is None:
             available_images = {
                 item.get("id") for item in self.reference_library.list()
                 if item.get("kind") == "image" and item.get("mime_type") in REFERENCE_IMAGE_MIME_TYPES
             }
-            reference_id = next((
-                item_id for item_id in run.reference_ids
-                if item_id in available_images
-            ), "")
-        if not reference_id:
-            return None, "", ""
-        try:
-            metadata, image = self.reference_library.read_file(reference_id)
-        except KeyError:
-            return None, "", ""
-        if metadata.get("kind") != "image":
-            return None, "", ""
-        reference = _validate_reference_image(image, str(metadata.get("mime_type", "")))
-        return reference, str(metadata.get("filename", "总参考图")), reference_id
+            reference_ids = [item_id for item_id in run.reference_ids if item_id in available_images][:MAX_REFERENCE_IMAGES]
+        references = []
+        for reference_id in reference_ids:
+            try:
+                metadata, image = self.reference_library.read_file(reference_id)
+            except KeyError:
+                continue
+            if metadata.get("kind") != "image":
+                continue
+            image_data, mime_type = _validate_reference_image(image, str(metadata.get("mime_type", "")))
+            references.append((image_data, mime_type, str(metadata.get("filename", "总参考图")), reference_id))
+        return references
 
     def generate_image(
         self,
@@ -176,7 +177,7 @@ class PlannerPipeline:
         supplement_prompt: str = "",
         reference_image: str | None = None,
         reference_image_name: str = "",
-    ) -> Dict[str, str]:
+    ) -> Dict[str, Any]:
         run = self.store.load(run_id)
         task = next((item for item in run.visual_tasks if item.id == task_id), None)
         if not task:
@@ -186,21 +187,24 @@ class PlannerPipeline:
         final_prompt = base_prompt + (f"\n补充要求：{supplement}" if supplement else "")
         if len(final_prompt) > 8000:
             raise ValueError("图片提示词不能超过 8000 个字符")
-        reference = _decode_reference_image(reference_image)
-        reference_id = ""
-        if not reference:
-            reference, reference_image_name, reference_id = self._run_image_reference(run)
+        direct_reference = _decode_reference_image(reference_image)
+        if direct_reference:
+            references = [(direct_reference[0], direct_reference[1], reference_image_name or "参考图", "")]
+        else:
+            references = self._run_image_references(run)
+        provider_references = [item[:2] for item in references]
+        provider_reference = provider_references[0] if len(provider_references) == 1 else provider_references
         selected_size = str(size).strip() if size is not None else str(self.model_config["image"].get("size", "1024x1024"))
         if selected_size not in SUPPORTED_IMAGE_SIZES:
             raise ValueError("图片尺寸不受支持")
         if size is None:
-            if reference:
-                image, mime_type, revised_prompt = self.image_generator.generate(final_prompt, reference_image=reference)
+            if references:
+                image, mime_type, revised_prompt = self.image_generator.generate(final_prompt, reference_image=provider_reference)
             else:
                 image, mime_type, revised_prompt = self.image_generator.generate(final_prompt)
         else:
-            if reference:
-                image, mime_type, revised_prompt = self.image_generator.generate(final_prompt, size=selected_size, reference_image=reference)
+            if references:
+                image, mime_type, revised_prompt = self.image_generator.generate(final_prompt, size=selected_size, reference_image=provider_reference)
             else:
                 image, mime_type, revised_prompt = self.image_generator.generate(final_prompt, size=selected_size)
         extension = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}[mime_type]
@@ -221,14 +225,24 @@ class PlannerPipeline:
             "url": f"/api/images/{filename}",
             "mime_type": mime_type,
         }
-        if reference:
-            reference_extension = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}[reference[1]]
-            reference_filename = f"{run.id}-{safe_task_id}-reference-{uuid.uuid4().hex[:8]}.{reference_extension}"
-            (self.images_dir / reference_filename).write_bytes(reference[0])
-            result["reference_image_url"] = f"/api/images/{reference_filename}"
-            result["reference_image_name"] = str(reference_image_name or "参考图")[:160]
-            if reference_id:
-                result["reference_image_id"] = reference_id
+        if references:
+            saved_references = []
+            for index, (image_data, reference_mime, reference_name, reference_id) in enumerate(references, start=1):
+                reference_extension = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}[reference_mime]
+                reference_filename = f"{run.id}-{safe_task_id}-reference-{index}-{uuid.uuid4().hex[:8]}.{reference_extension}"
+                (self.images_dir / reference_filename).write_bytes(image_data)
+                saved_reference = {
+                    "url": f"/api/images/{reference_filename}",
+                    "name": str(reference_name or f"参考图 {index}")[:160],
+                }
+                if reference_id:
+                    saved_reference["id"] = reference_id
+                saved_references.append(saved_reference)
+            result["reference_images"] = saved_references
+            result["reference_image_url"] = saved_references[0]["url"]
+            result["reference_image_name"] = saved_references[0]["name"]
+            if saved_references[0].get("id"):
+                result["reference_image_id"] = saved_references[0]["id"]
         run.generated_images.append(result)
         task.status = "generated"
         self.store.save(run)

@@ -220,9 +220,18 @@ class PlannerRequestHandler(BaseHTTPRequestHandler):
                 )
                 self._send(200, document)
                 return
+            if path.startswith("/api/runs/") and path.endswith("/image-references"):
+                run_id = unquote(path.split("/")[3])
+                reference_ids = body.get("reference_ids") or []
+                if not isinstance(reference_ids, list):
+                    raise ValueError("reference_ids 必须是数组")
+                run = self.pipeline.set_image_references(run_id, reference_ids)
+                self._send(200, to_dict(run))
+                return
             if path.startswith("/api/runs/") and path.endswith("/image-reference"):
                 run_id = unquote(path.split("/")[3])
-                run = self.pipeline.set_image_reference(run_id, str(body.get("reference_id", "")))
+                reference_id = str(body.get("reference_id", "")).strip()
+                run = self.pipeline.set_image_references(run_id, [reference_id] if reference_id else [])
                 self._send(200, to_dict(run))
                 return
             if path.startswith("/api/runs/"):
